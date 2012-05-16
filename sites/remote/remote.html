@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>
+          Slicer Remote
+        </title>
+        <link rel="stylesheet" href="http://code.jquery.com/mobile/1.0.1/jquery.mobile-1.0.1.min.css" />
+        <style>
+            /* App custom styles */
+        </style>
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.6.4/jquery.min.js">
+        </script>
+        <script src="http://code.jquery.com/mobile/1.0.1/jquery.mobile-1.0.1.min.js">
+        </script>
+    </head>
+    <body>
+        <div data-role="page" id="page1" data-title="3D Slicer Remote Control">
+                <table border=0 width=100%>
+                  <tr valign="top"><td>
+                        <ul data-role="listview" data-divider-theme="b" data-inset="true">
+                            <li data-role="list-divider" role="heading"> Volumes </li>
+                            <a id="Next" data-role="button" data-mini="true">Next</a>
+                            <a id="Previous" data-role="button" data-mini="true">Previous</a>
+                        </ul>
+                    </td>
+                    <td>
+                        <div id="sliceModeBar" data-role="navbar" data-iconpos="top" selected='Axial'>
+                            <ul>
+                                <li> <a href="#page1" id='Axial' data-theme="" data-icon="" class="ui-btn-active"> Axial </a> </li>
+                                <li> <a href="#page1" id='Sagittal' data-theme="" data-icon=""> Sagittal </a> </li>
+                                <li> <a href="#page1" id='Coronal' data-theme="" data-icon=""> Coronal </a> </li>
+                                <li> <a href="#page1" id='ThreeD' data-theme="" data-icon=""> ThreeD </a> </li>
+                            </ul>
+                            </div>
+
+                            <style media="screen"> 
+                               canvas { border: 1px solid #CCC; }
+                           </style>
+                           <div id='touchViewContainer'> <canvas id="touchView"></canvas> </div>
+
+                    </td>
+                    <td>
+                          <a id="Scroll" data-role="button" data-mini="true">Scroll</a>
+                          <a id="WindowLevel" data-role="button" data-mini="true">(Window/Level)</a>
+                          <a id="Cine" data-role="button" data-mini="true">(Start Cine)</a>
+                          <a id="Fiducial" data-role="button" data-mini="true">(Fiducial)</a>
+                    </td></tr>
+                </table>
+
+        </div>
+
+        <script src="touchVolumes.js"></script>
+        <script src="touchNav.js"></script>
+        <script src="touchView.js"></script>
+
+    </body>
+</html>
