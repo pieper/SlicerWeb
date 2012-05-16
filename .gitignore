@@ -1,3 +1,15 @@
+# Ignore all dotfiles...
+.*
+# except for .gitignore
+!.gitignore
+
+# Exclude QtCreator files ...
+CMakeLists.txt.user*
+
+# Ignore ctags file
+tags
+
+# Ignore Python stuff
 *.py[co]
 
 # Packages
@@ -25,3 +37,7 @@ pip-log.txt
 
 #Mr Developer
 .mr.developer.cfg
+
+
+# Exclude Kdevelop4 files ...
+.kdev*
