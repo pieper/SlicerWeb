@@ -1,4 +1,4 @@
 SlicerWeb
 =========
 
-Slicer modules that support web services and web applications
+Slicer modules that support web services and web applications.
