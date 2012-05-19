@@ -9,16 +9,20 @@
 
 # for a superbuild:
 SLICER_SUPERBUILD="${HOME}/slicer4/latest/Slicer-superbuild"
-SLICER_BUILD="${SLICER_SUPERBUILD}/Slicer-build"
-PYTHONEXE="${SLICER_SUPERBUILD}/python-build/bin/python"
-LAUNCH="${SLICER_BUILD}/Slicer --launcher-no-splash --launch"
-PYTHON="${LAUNCH} ${PYTHONEXE}"
+if [ -e ${SLICER_SUPERBUILD} ]; then
+  SLICER_BUILD="${SLICER_SUPERBUILD}/Slicer-build"
+  PYTHONEXE="${SLICER_SUPERBUILD}/python-build/bin/python"
+  LAUNCH="${SLICER_BUILD}/Slicer --launcher-no-splash --launch"
+  PYTHON="${LAUNCH} ${PYTHONEXE}"
+fi
 
 # for an installation:
-SLICER="/extra/pieper/Slicer-4.1.0-linux-amd64"
-PYTHONEXE="${SLICER}/bin/python"
-LAUNCH="${SLICER}/Slicer --launcher-no-splash --launch"
-PYTHON="${LAUNCH} ${PYTHONEXE}"
+SLICER_INSTALL="/extra/pieper/Slicer-4.1.0-linux-amd64"
+if [ -e ${SLICER_INSTALL} ]; then
+  PYTHONEXE="${SLICER_INSTALL}/bin/python"
+  LAUNCH="${SLICER_INSTALL}/Slicer --launcher-no-splash --launch"
+  PYTHON="${LAUNCH} ${PYTHONEXE}"
+fi
 
 tmpdir=`mktemp -d /tmp/slicr.XXXX`
 echo ${tmpdir}
