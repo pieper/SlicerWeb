@@ -103,7 +103,7 @@ class WebServerLogic:
     self.interval = 20
     self.process = None
     self.pythonPath = slicer.app.slicerHome +"/bin/python"
-    if not os.path.exists(self.pythonPath):
+    if not os.path.exists(self.pythonPath) or os.path.isdir(self.pythonPath):
       self.pythonPath = slicer.app.slicerHome +"/../python-build/bin/python"
     if not os.path.exists(self.pythonPath):
       self.logMessage ("Cannot find python executable cannot start server")
