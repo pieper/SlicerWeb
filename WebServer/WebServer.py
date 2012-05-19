@@ -62,6 +62,12 @@ class WebServerWidget:
 
   def setup(self):
 
+    # reload button
+    self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.toolTip = "Reload this module."
+    self.layout.addWidget(self.reloadButton)
+    self.reloadButton.connect('clicked(bool)', self.onReload)
+
     self.log = qt.QTextEdit()
     self.log.readOnly = True
     self.layout.addWidget(self.log)
@@ -78,9 +84,34 @@ class WebServerWidget:
     # Add spacer to layout
     self.layout.addStretch(1)
 
-  def logMessage(self,message):
-    print(message)
-    self.log.insertHtml(message)
+  def onReload(self):
+    import imp, sys, os
+
+    try:
+      self.logic.stop()
+    except AttributeError:
+      # can happen if logic failed to load
+      pass
+
+    filePath = slicer.modules.webserver.path
+    p = os.path.dirname(filePath)
+    if not sys.path.__contains__(p):
+      sys.path.insert(0,p)
+
+    mod = "WebServer"
+    fp = open(filePath, "r")
+    globals()[mod] = imp.load_module(mod, fp, filePath, ('.py', 'r', imp.PY_SOURCE))
+    fp.close()
+
+    globals()['web'] = web = globals()[mod].WebServerWidget()
+
+    web.logic.start()
+
+
+  def logMessage(self,*args):
+    for arg in args:
+      print(arg)
+      self.log.insertHtml(arg)
     self.log.insertPlainText('\n')
     self.log.ensureCursorVisible()
     self.log.repaint()
@@ -114,14 +145,15 @@ class WebServerLogic:
     self.serverHelperPath = moduleDirectory + "/Helper/ServerHelper.py"
     self.timer = qt.QTimer()
 
-  def logMessage(self,message):
-    print(message)
+  def logMessage(self,*args):
+    for arg in args:
+      print(arg)
 
   def start(self):
     """Create the subprocess and set up a polling timer"""
     if self.process:
       self.stop()
-    self.logMessage(("running:", self.pythonPath, self.serverHelperPath, self.docroot))
+    self.logMessage("running:", self.pythonPath, self.serverHelperPath, self.docroot)
     self.process = subprocess.Popen([self.pythonPath, self.serverHelperPath, self.docroot],
                                       stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE,
@@ -134,8 +166,9 @@ class WebServerLogic:
 
   def stop(self):
     self.timer.stop()
-    self.process.kill()
-    self.process = None
+    if self.process:
+      self.process.kill()
+      self.process = None
 
   def tick(self):
     """Check to see if there's anything to do"""
@@ -429,12 +462,14 @@ class WebServerLogic:
       orbitY = None
 
     if mode:
-      camera = slicer.util.getNode('*Camera*').GetCamera()
+      cameraNode = slicer.util.getNode('*Camera*')
+      camera = cameraNode.GetCamera()
       if mode == 'start' or not self.interactionState.has_key('camera'):
         startCamera = vtk.vtkCamera()
         startCamera.DeepCopy(camera)
         self.interactionState['camera'] = startCamera
       startCamera = self.interactionState['camera']
+      cameraNode.DisableModifiedEventOn()
       camera.DeepCopy(startCamera)
       if roll:
         camera.Roll(roll*100)
@@ -465,6 +500,8 @@ class WebServerLogic:
 
         newPosition = focalPoint + viewDistance * newFPToEye / numpy.linalg.norm(newFPToEye)
         camera.SetPosition(newPosition)
+      cameraNode.DisableModifiedEventOff()
+      cameraNode.InvokePendingModifiedEvent()
 
     layoutManager = slicer.app.layoutManager()
     view = layoutManager.threeDWidget(0).threeDView()
