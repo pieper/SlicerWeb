@@ -469,7 +469,7 @@ class WebServerLogic:
         startCamera.DeepCopy(camera)
         self.interactionState['camera'] = startCamera
       startCamera = self.interactionState['camera']
-      modifiedDisabled = cameraNode.StartModify()
+      cameraNode.DisableModifiedEventOn()
       camera.DeepCopy(startCamera)
       if roll:
         camera.Roll(roll*100)
@@ -500,7 +500,8 @@ class WebServerLogic:
 
         newPosition = focalPoint + viewDistance * newFPToEye / numpy.linalg.norm(newFPToEye)
         camera.SetPosition(newPosition)
-      cameraNode.EndModify(modifiedDisabled)
+      cameraNode.DisableModifiedEventOff()
+      cameraNode.InvokePendingModifiedEvent()
 
     layoutManager = slicer.app.layoutManager()
     view = layoutManager.threeDWidget(0).threeDView()
