@@ -77,6 +77,7 @@ class WebServerWidget:
     # TODO: warning dialog on first connect
     # TODO: config option for port
 
+    self.logic = WebServerLogic(logMessage=self.logMessage)
     #self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic = WebServerLogic()
     self.logic.start()
