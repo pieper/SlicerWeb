@@ -80,7 +80,7 @@ var touchView = function(options) {
               deltaX = (event.offsetX - self.startX) / ctxt.canvas.width;
               deltaY = (event.offsetY - self.startY) / ctxt.canvas.height;
               if ( selection == 'ThreeD' ) {
-                self.draw({mode: 'drag', orbitX: deltaX, orbitY: deltaY,size: 10});
+                self.draw({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
               } else {
                 scrollTo = (1. * event.offsetY) / ctxt.canvas.height;
                 self.draw({scrollTo: scrollTo, size: 256});
