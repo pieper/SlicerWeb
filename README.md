@@ -7,5 +7,6 @@ Slicer modules that support web services and web applications.
 
 5/20/2012 dtc
 =============
-Starting integration to AWS instance
+Starting integration to AWS instance. Next step is to hookup the locally running
+Slicer to this repo
 
