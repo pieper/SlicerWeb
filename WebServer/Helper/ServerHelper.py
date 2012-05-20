@@ -114,6 +114,15 @@ class ServerHelper(object):
         start_response(status, response_headers)
         self.count += 1
         return [im]
+      # didn't match known slicer API commands, so we shouldn't
+      # prevent other slicer connections from completing
+      count = int(sys.stdin.readline())
+      slicerResponse = sys.stdin.read(count)
+      self.communicatingWithSlicer = False
+      response_headers = [('Content-Type','text/plain')]
+      start_response(status, response_headers)
+      self.count += 1
+      return [slicerResponse]
     # handle regular doctypes
     if rest.endswith(".html"):
       response_headers = [('Content-Type','text/html')]
