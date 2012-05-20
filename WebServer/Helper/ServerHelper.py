@@ -164,7 +164,14 @@ class ServerHelper(object):
       resp = fp.read()
       fp.close()
       return [resp]
-      
+    if rest.endswith("ico"):
+      response_headers = [('Content-Type','image/vnd.microsoft.icon')]
+      start_response(status, response_headers)
+      html_path = self.docroot + rest
+      fp = open(html_path, 'r')
+      resp = fp.read()
+      fp.close()
+      return [resp]
     # don't know - send an error mesage
     status = 404
     response_headers = [('Content-Type','text/plain')]
