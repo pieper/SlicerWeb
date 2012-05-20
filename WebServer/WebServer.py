@@ -359,6 +359,9 @@ class WebServerLogic:
     """return a png for a slice view.
     Args:
      view={red, yellow, green}
+     scrollTo= 0 to 1 for slice position within volume
+     offset=mm offset relative to slice origin (position of slice slider)
+     size=pixel size of output png
     """
     from PIL import Image
     import vtk.util.numpy_support
