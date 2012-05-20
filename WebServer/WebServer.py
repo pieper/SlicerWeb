@@ -73,6 +73,12 @@ class WebServerWidget:
     self.layout.addWidget(self.log)
     self.logMessage('<p>Status: <i>Idle</i>\n')
 
+    # clear log button
+    self.clearLogButton = qt.QPushButton("Clear Log")
+    self.clearLogButton.toolTip = "Clear the log window."
+    self.layout.addWidget(self.clearLogButton)
+    self.clearLogButton.connect('clicked()', self.log.clear)
+
     # TODO: button to start/stop server
     # TODO: warning dialog on first connect
     # TODO: config option for port
