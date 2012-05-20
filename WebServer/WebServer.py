@@ -78,8 +78,6 @@ class WebServerWidget:
     # TODO: config option for port
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
-    #self.logic = WebServerLogic(logMessage=self.logMessage)
-    self.logic = WebServerLogic()
     self.logic.start()
 
     # Add spacer to layout
@@ -462,6 +460,10 @@ class WebServerLogic:
     except (KeyError, ValueError):
       orbitY = None
 
+    layoutManager = slicer.app.layoutManager()
+    view = layoutManager.threeDWidget(0).threeDView()
+    view.renderEnabled = False
+
     if mode:
       cameraNode = slicer.util.getNode('*Camera*')
       camera = cameraNode.GetCamera()
@@ -504,9 +506,8 @@ class WebServerLogic:
       cameraNode.DisableModifiedEventOff()
       cameraNode.InvokePendingModifiedEvent()
 
-    layoutManager = slicer.app.layoutManager()
-    view = layoutManager.threeDWidget(0).threeDView()
-    view.forceRender()
+    view.renderWindow().Render()
+    view.renderEnabled = True
     w2i = vtk.vtkWindowToImageFilter()
     w2i.SetInput(view.renderWindow())
     w2i.Update()
