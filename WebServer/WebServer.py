@@ -224,8 +224,9 @@ class WebServerLogic:
       if cmd.find('/volume') == 0:
         self.logMessage ("got request for volume")
         return (self.volume(cmd))
-      self.logMessage ("unknown command \"" + cmd + "\"")
-      return ""
+      response = "unknown command \"" + cmd + "\""
+      self.logMessage (response)
+      return response
     except:
       message = traceback.format_exc()
       self.logMessage("Could not handle command: %s" % cmd)
