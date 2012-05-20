@@ -351,10 +351,9 @@ class WebServerLogic:
     applicationLogic.PropagateVolumeSelection(0)
     return ( "got it" )
 
-
   def mrml(self,cmd):
     import slicer
-    return ( json.dumps( slicer.util.getNodes().keys() ) )
+    return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
   def slice(self,cmd):
     """return a png for a slice view.
