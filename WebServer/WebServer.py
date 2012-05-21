@@ -519,6 +519,7 @@ class WebServerLogic:
     view.renderEnabled = True
     w2i = vtk.vtkWindowToImageFilter()
     w2i.SetInput(view.renderWindow())
+    w2i.SetReadFrontBuffer(0)
     w2i.Update()
     imageData = w2i.GetOutput()
 
