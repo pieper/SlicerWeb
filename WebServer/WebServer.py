@@ -188,8 +188,9 @@ class WebServerLogic:
         response = self.handle(cmd)
         try:
           if response:
-            self.logMessage('writing length: \"' + str(len(response)) + "\"")
-            self.process.stdin.write(str(len(response)) + "\n")
+            contentLength = len(response)
+            self.logMessage('writing length: \"' + str(contentLength) + "\"")
+            self.process.stdin.write(str(contentLength) + "\n")
             self.logMessage('wrote length')
             self.process.stdin.write(response)
             self.logMessage('wrote response')
@@ -221,6 +222,9 @@ class WebServerLogic:
       if cmd.find('/transform') == 0:
         self.logMessage ("got request for transform")
         return (self.transform(cmd))
+      if cmd.find('/volumeSelection') == 0:
+        self.logMessage ("got request for volumeSelection")
+        return (self.volumeSelection(cmd))
       if cmd.find('/volume') == 0:
         self.logMessage ("got request for volume")
         return (self.volume(cmd))
@@ -314,7 +318,7 @@ class WebServerLogic:
 
     return ( "got it" )
 
-  def volume(self,cmd):
+  def volumeSelection(self,cmd):
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     try:
@@ -350,6 +354,38 @@ class WebServerLogic:
     selectionNode.SetReferenceActiveVolumeID( volumeNode.GetID() )
     applicationLogic.PropagateVolumeSelection(0)
     return ( "got it" )
+
+  def volume(self,cmd):
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      volumeID = q['id'][0].strip().lower()
+    except KeyError:
+      volumeID = '*'
+      volumeID = 'MRHead'
+
+    import slicer
+    volumeNode = slicer.util.getNode(volumeID)
+    volumeArray = slicer.util.array(volumeID)
+    nrrdHeader = """NRRD0004
+# Complete NRRD file format specification at:
+# http://teem.sourceforge.net/nrrd/format.html
+type: short
+dimension: 3
+space: left-posterior-superior
+sizes: 256 256 130
+space directions: (0,1,0) (0,0,-1) (-1.2999954223632812,0,0)
+kinds: domain domain domain
+endian: little
+encoding: raw
+space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
+
+"""
+    nrrdData = StringIO.StringIO()
+    nrrdData.write(nrrdHeader)
+    nrrdData.write(volumeArray.data)
+    return nrrdData.getvalue()
+
 
   def mrml(self,cmd):
     import slicer

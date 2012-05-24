@@ -98,11 +98,20 @@ class ServerHelper(object):
         start_response(status, response_headers)
         self.count += 1
         return [im]
-      if subcmd.find("/volume") == 0:
+      if subcmd.find("/volumeSelection") == 0:
         count = int(sys.stdin.readline())
         im = sys.stdin.read(count)
         self.communicatingWithSlicer = False
         response_headers = [('Content-Type','image/png')]
+        start_response(status, response_headers)
+        self.count += 1
+        return [im]
+      if subcmd.find("/volume") == 0:
+        count = int(sys.stdin.readline())
+        im = sys.stdin.read(count)
+        self.logMessage("read %d from slicer" % count)
+        self.communicatingWithSlicer = False
+        response_headers = [('Content-Type','application/octet-stream')]
         start_response(status, response_headers)
         self.count += 1
         return [im]
