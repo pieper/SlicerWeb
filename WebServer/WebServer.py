@@ -131,6 +131,14 @@ class WebServerLogic:
   communitates with the server via stdio.  A QTimer 
   is used to periodically check the read pipe for content
   # TODO: integrate stdio pipes into Qt event loop
+  Likely approach: 
+    Subclass CherryPyWSGIServer and override the tick() method
+    Get the sockect member and call fileno() on it.
+    Create a QTcpServer and call setSocketDescriptor.
+    Then observe newConnection signals and call a skeleton tick
+    which will accept the connection and send it to a thread.
+    Need to be careful that slicer code (Qt, VTK, etc is not
+    modified from multiple server threads.
   """
   def __init__(self, logMessage=None):
     if logMessage:
