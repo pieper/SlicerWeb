@@ -1,8 +1,9 @@
 import string,cgi,time
 import os,sys
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from SimpleHTTPServer import SimpleHTTPRequestHandler
 
-class SlicerRequestHandler(BaseHTTPRequestHandler):
+class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
   def start_response(self, status, response_headers):
     self.send_response(status)
@@ -14,19 +15,26 @@ class SlicerRequestHandler(BaseHTTPRequestHandler):
      self.server.logMessage(message)
 
   def do_GET(self):
+    self.protocol_version = 'HTTP/1.1'
     try:
       status = 200
       rest = self.path
 
+      self.logMessage("Handling: " + rest)
       if os.path.dirname(rest).endswith('slicer'):
         self.logMessage('splitting path')
         rest = '/slicer/' + os.path.split(rest)[1]
-      self.logMessage("Handling: " + rest)
+      else:
+        os.chdir(self.server.docroot)
+        self.logMessage("Handling: " + self.path)
+        SimpleHTTPRequestHandler.do_GET(self)
+        return
 
       # talk with slicer
       if rest.find("/slicer") == 0:
         if self.server.communicatingWithSlicer:
           response_headers = [('Content-Type','text/plain')]
+          self.logMessage('Server busy')
           self.start_response(status, response_headers)
           self.wfile.write( 'Busy' )
         else:
@@ -72,6 +80,7 @@ class SlicerRequestHandler(BaseHTTPRequestHandler):
             self.wfile.write( im )
           elif subcmd.find("/threeD") == 0:
             count = int(sys.stdin.readline())
+            self.logMessage('trying to read %d from stdin' % count)
             im = sys.stdin.read(count)
             self.server.communicatingWithSlicer = False
             response_headers = [('Content-Type','image/png')]
@@ -109,66 +118,13 @@ class SlicerRequestHandler(BaseHTTPRequestHandler):
           else:
             # didn't match known slicer API commands, so we shouldn't
             # prevent other slicer connections from completing
+            self.logMessage('default request' % count)
             count = int(sys.stdin.readline())
             slicerResponse = sys.stdin.read(count)
             self.server.communicatingWithSlicer = False
             response_headers = [('Content-Type','text/plain')]
             self.start_response(status, response_headers)
             self.wfile.write( slicerResponse )
-
-      else:
-        # handle regular doctypes
-        if rest.endswith(".html"):
-          response_headers = [('Content-Type','text/html')]
-          self.start_response(status, response_headers)
-          html_path = self.server.docroot + rest
-          fp = open(html_path, 'r')
-          resp = fp.read()
-          fp.close()
-          self.wfile.write( resp )
-        elif rest.endswith(".json"):
-          response_headers = [('Content-Type','application/json')]
-          self.start_response(status, response_headers)
-          html_path = self.server.docroot + rest
-          fp = open(html_path, 'r')
-          resp = fp.read()
-          fp.close()
-          self.wfile.write( resp )
-        elif rest.endswith(".js"):
-          response_headers = [('Content-Type','application/javascript')]
-          self.start_response(status, response_headers)
-          html_path = self.server.docroot + rest
-          fp = open(html_path, 'r')
-          resp = fp.read()
-          fp.close()
-          self.wfile.write( resp )
-        elif rest.endswith(".css"):
-          response_headers = [('Content-Type','text/css')]
-          self.start_response(status, response_headers)
-          html_path = self.server.docroot + rest
-          fp = open(html_path, 'r')
-          resp = fp.read()
-          fp.close()
-          self.wfile.write( resp )
-        elif rest.endswith("png"):
-          response_headers = [('Content-Type','image/png')]
-          self.start_response(status, response_headers)
-          html_path = self.server.docroot + rest
-          fp = open(html_path, 'r')
-          resp = fp.read()
-          fp.close()
-          self.wfile.write( resp )
-        elif rest.endswith("ico"):
-          response_headers = [('Content-Type','image/vnd.microsoft.icon')]
-          self.start_response(status, response_headers)
-          html_path = self.server.docroot + rest
-          fp = open(html_path, 'r')
-          resp = fp.read()
-          fp.close()
-          self.wfile.write( resp )
-
-    except IOError:
-      self.send_error(404,'File Not Found: %s' % self.path)
 
     self.logMessage("handled %s" % self.path)
 
