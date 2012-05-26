@@ -125,8 +125,8 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
             response_headers = [('Content-Type','text/plain')]
             self.start_response(status, response_headers)
             self.wfile.write( slicerResponse )
-
-    self.logMessage("handled %s" % self.path)
+    except :
+      self.send_error(404, "File not found")
 
   def do_PUT(self):
     try:
