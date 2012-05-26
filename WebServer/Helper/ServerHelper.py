@@ -128,8 +128,34 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
     except :
       self.send_error(404, "File not found")
 
+  def dumpReq( self, formInput=None ):
+      response= "<html><head></head><body>"
+      response+= "<p>HTTP Request</p>"
+      response+= "<p>self.command= <tt>%s</tt></p>" % ( self.command )
+      response+= "<p>self.path= <tt>%s</tt></p>" % ( self.path )
+      response+= "</body></html>"
+      self.sendPage( "text/html", response )
+  def sendPage( self, type, body ):
+      self.send_response( 200 )
+      self.send_header( "Content-type", type )
+      self.send_header( "Content-length", str(len(body)) )
+      self.end_headers()
+      self.wfile.write( body )
+
   def do_PUT(self):
     try:
+      self.server.logMessage( "Command: %s Path: %s Headers: %r"
+                        % ( self.command, self.path, self.headers.items() ) )
+      if self.headers.has_key('content-length'):
+          length= int( self.headers['content-length'] )
+          body = self.rfile.read( length )
+          self.logMessage("Got: %s" % body)
+          self.dumpReq( self.rfile.read( length ) )
+      else:
+          self.dumpReq( None )
+
+
+      comment = """
       ctype, pdict = cgi.parse_header(self.headers.getheader('content-type'))
       if ctype == 'multipart/form-data':
         query=cgi.parse_multipart(self.rfile, pdict)
@@ -139,15 +165,16 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         # print "filecontent", upfilecontent[0]
         self.wfile.write("<HTML>PUT OK.<BR><BR>");
         self.wfile.write(upfilecontent[0]);
-        xx = """
-            if environ['REQUEST_METHOD'] == 'PUT':
-              #TODO
-              self.logMessage("got a PUT")
-              body = cherrypy.request.body.read()
-              self.logMessage("body is: %s" % body)
         """
+      xx = """
+          if environ['REQUEST_METHOD'] == 'PUT':
+            #TODO
+            self.logMessage("got a PUT")
+            body = cherrypy.request.body.read()
+            self.logMessage("body is: %s" % body)
+      """
     except :
-        pass
+        self.server.logMessage('could not PUT')
 
     def do_POST(self):
         #TODO
