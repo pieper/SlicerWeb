@@ -168,6 +168,7 @@ class WebServerLogic:
       self.stop()
     self.logMessage("running:", self.pythonPath, self.serverHelperPath, self.docroot)
     self.process = subprocess.Popen([self.pythonPath, self.serverHelperPath, self.docroot],
+                                      bufsize=-1,
                                       stdin=subprocess.PIPE,
                                       stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE)
@@ -185,6 +186,17 @@ class WebServerLogic:
 
   def tick(self):
     """Check to see if there's anything to do"""
+
+    # first, clear stderr
+    inputs = [self.process.stderr]
+    outputs = []
+    readable,writable,exceptional = select.select(inputs, outputs, inputs, 0)
+    if readable.__contains__(self.process.stderr):
+      error = self.process.stderr.readline()
+      if error:
+        print ("stderr: %s" % error)
+      
+    # now check stdin to see if there is work to do
     inputs = [self.process.stdout]
     outputs = []
     readable,writable,exceptional = select.select(inputs, outputs, inputs, 0)

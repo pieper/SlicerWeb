@@ -26,6 +26,7 @@ var touchView = function(options) {
 
             self.mouseDragging = false;
             self.nextImageSource = "";
+            self.requestingImage = false;
         },
 
         //
@@ -130,8 +131,11 @@ var touchView = function(options) {
             ctxt.clearRect( 0, 0, ctxt.canvas.width, ctxt.canvas.height );
             ctxt.drawImage( imageObj, margin, 0, drawWidth, drawHeight );
             if (self.nextImageSource != '') {
+              self.requestingImage = true;
               imageObj.src = self.nextImageSource;
               self.nextImageSource = '';
+            } else {
+              self.requestingImage = false;
             }
           };      
 
@@ -184,10 +188,11 @@ var touchView = function(options) {
           src += "&fmt=" + "png";
 
           if ( force ) {
-            self.stopDownloads();
+            //self.stopDownloads();
             self.nextImageSource == '';
           }
-          if ( self.nextImageSource == '' ) {
+          if ( !self.requestingImage ) {
+            self.requestingImage = true;
             imageObj.src = src;
             self.nextImageSource = '';
           } else {
