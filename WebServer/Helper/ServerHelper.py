@@ -60,31 +60,33 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       self.logMessage("  [done]")
       self.server.communicatingWithSlicer = False
 
+      response_headers = [('Content-length', str(count))]
+
       if ACTION == "repl":
-	response_headers = [('Content-Type','text/plain')]
+	response_headers += [('Content-Type','text/plain')]
       elif ACTION == "mrml":
-	response_headers = [('Content-Type','application/json')]
+	response_headers += [('Content-Type','application/json')]
       elif ACTION == "scene":
-	response_headers = [('Content-Type','application/json')]
+	response_headers += [('Content-Type','application/json')]
       elif ACTION == "timeimage":
-	response_headers = [('Content-Type','image/png')]
+	response_headers += [('Content-Type','image/png')]
       elif ACTION == "slice":
-	response_headers = [('Content-Type','image/png')]
+	response_headers += [('Content-Type','image/png')]
       elif ACTION == "threeD":
-	response_headers = [('Content-Type','image/png')]
+	response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
-	response_headers = [('Content-Type','image/png')]
+	response_headers += [('Content-Type','image/png')]
       elif ACTION == "volumeSelection":
-	response_headers = [('Content-Type','image/png')]
+	response_headers += [('Content-Type','image/png')]
       elif ACTION == "volume":
-	response_headers = [('Content-Type','application/octet-stream')]
+	response_headers += [('Content-Type','application/octet-stream')]
       elif URL.query.endswith("png"):
-	response_headers = [('Content-Type','image/png')]
+	response_headers += [('Content-Type','image/png')]
       else:
 	# didn't match known slicer API commands, so we shouldn't
 	# prevent other slicer connections from completing
 	self.logMessage( 'WARNING: no matching action for:' + rest )
-	response_headers = [('Content-Type','text/plain')]
+	response_headers += [('Content-Type','text/plain')]
 
       # FINALLY, write the "im" returned by Slicer as the response
       self.start_response(status, response_headers)
