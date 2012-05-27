@@ -58,25 +58,25 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       im = sys.stdin.read(count)
       self.server.communicatingWithSlicer = False
 
-      if ACTION == "repl"
+      if ACTION == "repl":
 	response_headers = [('Content-Type','text/plain')]
-      elif ACTION == "mrml"
+      elif ACTION == "mrml":
 	response_headers = [('Content-Type','application/json')]
-      elif ACTION == "scene"
+      elif ACTION == "scene":
 	response_headers = [('Content-Type','application/json')]
-      elif ACTION == "timeimage"
+      elif ACTION == "timeimage":
 	response_headers = [('Content-Type','image/png')]
-      elif ACTION == "slice"
+      elif ACTION == "slice":
 	response_headers = [('Content-Type','image/png')]
-      elif ACTION == "threeD"
+      elif ACTION == "threeD":
 	response_headers = [('Content-Type','image/png')]
-      elif ACTION == "transform"
+      elif ACTION == "transform":
 	response_headers = [('Content-Type','image/png')]
-      elif ACTION == "volumeSelection"
+      elif ACTION == "volumeSelection":
 	response_headers = [('Content-Type','image/png')]
-      elif ACTION == "volume"
+      elif ACTION == "volume":
 	response_headers = [('Content-Type','application/octet-stream')]
-      elif URL.query.endswith("png"):
+      elif URL.query.endswith("png")::
 	response_headers = [('Content-Type','image/png')]
       else:
 	# didn't match known slicer API commands, so we shouldn't
@@ -88,7 +88,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       self.start_response(status, response_headers)
       self.wfile.write( im )
 
-    except :
+    except:
       self.send_error(404, "File not found")
 
     # end do_GET
