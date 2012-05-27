@@ -76,7 +76,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
 	response_headers = [('Content-Type','image/png')]
       elif ACTION == "volume":
 	response_headers = [('Content-Type','application/octet-stream')]
-      elif URL.query.endswith("png")::
+      elif URL.query.endswith("png"):
 	response_headers = [('Content-Type','image/png')]
       else:
 	# didn't match known slicer API commands, so we shouldn't
