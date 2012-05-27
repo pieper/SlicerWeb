@@ -1,7 +1,9 @@
 import string,cgi,time
 import os,sys
+
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from SimpleHTTPServer import SimpleHTTPRequestHandler
+from urlparse import urlparse
 
 class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
@@ -14,119 +16,83 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
   def logMessage(self, message):
      self.server.logMessage(message)
 
+
   def do_GET(self):
     self.protocol_version = 'HTTP/1.1'
     try:
       status = 200
       rest = self.path
-
       self.logMessage("Handling: " + rest)
-      if os.path.dirname(rest).endswith('slicer'):
-        self.logMessage('splitting path')
-        rest = '/slicer/' + os.path.split(rest)[1]
-      else:
+
+      # Handle this as a standard request
+      #
+      if !os.path.dirname(rest).endswith('slicer'):
         os.chdir(self.server.docroot)
-        self.logMessage("Handling: " + self.path)
+        self.logMessage(" ... using SimpleHTTPRequestHandler" )
         SimpleHTTPRequestHandler.do_GET(self)
         return
 
-      # talk with slicer
-      if rest.find("/slicer") == 0:
-        if self.server.communicatingWithSlicer:
-          response_headers = [('Content-Type','text/plain')]
-          self.logMessage('Server busy')
-          self.start_response(status, response_headers)
-          self.wfile.write( 'Busy' )
-        else:
-          self.server.communicatingWithSlicer = True
-          subcmd = rest[len("/slicer"):]
-          sys.stdout.write(subcmd + "\n")
-          sys.stdout.flush()
-          if subcmd.find("/repl") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','text/plain')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/mrml") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','application/json')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/scene") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','application/json')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/timeimage") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','image/png')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/slice") == 0:
-            count = int(sys.stdin.readline())
-            self.logMessage('trying to read %d from stdin' % count)
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','image/png')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/threeD") == 0:
-            count = int(sys.stdin.readline())
-            self.logMessage('trying to read %d from stdin' % count)
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','image/png')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/transform") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','image/png')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/volumeSelection") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','image/png')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.find("/volume") == 0:
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.logMessage("read %d from slicer" % count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','application/octet-stream')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          elif subcmd.endswith("png"):
-            count = int(sys.stdin.readline())
-            im = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','image/png')]
-            self.start_response(status, response_headers)
-            self.wfile.write( im )
-          else:
-            # didn't match known slicer API commands, so we shouldn't
-            # prevent other slicer connections from completing
-            self.logMessage('default request' % count)
-            count = int(sys.stdin.readline())
-            slicerResponse = sys.stdin.read(count)
-            self.server.communicatingWithSlicer = False
-            response_headers = [('Content-Type','text/plain')]
-            self.start_response(status, response_headers)
-            self.wfile.write( slicerResponse )
+      # Found /slicer request
+      #
+      if self.server.communicatingWithSlicer:
+	# But we're busy ... write response and return
+	response_headers = [('Content-Type','text/plain')]
+	self.logMessage('Server busy')
+	self.start_response(status, response_headers)
+	self.wfile.write( 'Busy' )
+	return
+
+      # Now we're talking to Slicer...
+      self.logMessage('Splitting path')
+      URL = urlparse( rest )
+      ACTION = os.path.basename( URL.path )
+
+      # and do the write to stdout / Slicer:stdin
+      self.server.communicatingWithSlicer = True
+      sys.stdout.write( "/" + ACTION + URL.query + "\n")
+      sys.stdout.flush()
+
+      # and read back from stdin / Slicer:stdout
+      count = int(sys.stdin.readline())
+      self.logMessage('Trying to read %d bytes from Slicer stdin ...' % count)
+      im = sys.stdin.read(count)
+      self.server.communicatingWithSlicer = False
+
+      if ACTION == "repl"
+	response_headers = [('Content-Type','text/plain')]
+      elif ACTION == "mrml"
+	response_headers = [('Content-Type','application/json')]
+      elif ACTION == "scene"
+	response_headers = [('Content-Type','application/json')]
+      elif ACTION == "timeimage"
+	response_headers = [('Content-Type','image/png')]
+      elif ACTION == "slice"
+	response_headers = [('Content-Type','image/png')]
+      elif ACTION == "threeD"
+	response_headers = [('Content-Type','image/png')]
+      elif ACTION == "transform"
+	response_headers = [('Content-Type','image/png')]
+      elif ACTION == "volumeSelection"
+	response_headers = [('Content-Type','image/png')]
+      elif ACTION == "volume"
+	response_headers = [('Content-Type','application/octet-stream')]
+      elif URL.query.endswith("png"):
+	response_headers = [('Content-Type','image/png')]
+      else:
+	# didn't match known slicer API commands, so we shouldn't
+	# prevent other slicer connections from completing
+	self.logMessage( 'WARNING: no matching action for:' + rest )
+	response_headers = [('Content-Type','text/plain')]
+
+      # FINALLY, write the "im" returned by Slicer as the response
+      self.start_response(status, response_headers)
+      self.wfile.write( im )
+
     except :
       self.send_error(404, "File not found")
+
+    # end do_GET
+
 
   def dumpReq( self, formInput=None ):
       response= "<html><head></head><body>"
@@ -135,6 +101,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       response+= "<p>self.path= <tt>%s</tt></p>" % ( self.path )
       response+= "</body></html>"
       self.sendPage( "text/html", response )
+
   def sendPage( self, type, body ):
       self.send_response( 200 )
       self.send_header( "Content-type", type )
@@ -176,9 +143,9 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
     except :
         self.server.logMessage('could not PUT')
 
-    def do_POST(self):
-        #TODO
-        pass
+  def do_POST(self):
+    #TODO
+    pass
 
 
 class SlicerHTTPServer(HTTPServer):
