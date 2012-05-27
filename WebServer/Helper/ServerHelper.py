@@ -32,7 +32,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         SimpleHTTPRequestHandler.do_GET(self)
         return
 
-      # Found /slicer request
+      # Got a /slicer request
       #
       if self.server.communicatingWithSlicer:
 	# But we're busy ... write response and return
@@ -43,19 +43,20 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
 	return
 
       # Now we're talking to Slicer...
-      self.logMessage('Splitting path')
       URL = urlparse( rest )
       ACTION = os.path.basename( URL.path )
+      self.logMessage('Parsing url, action is %s' % ACTION)
 
       # and do the write to stdout / Slicer:stdin
       self.server.communicatingWithSlicer = True
-      sys.stdout.write( "/" + ACTION + URL.query + "\n")
+      sys.stdout.write( "/" + ACTION + "/"+ URL.query + "\n")
       sys.stdout.flush()
 
       # and read back from stdin / Slicer:stdout
       count = int(sys.stdin.readline())
       self.logMessage('Trying to read %d bytes from Slicer stdin ...' % count)
       im = sys.stdin.read(count)
+      self.logMessage("  [done]")
       self.server.communicatingWithSlicer = False
 
       if ACTION == "repl":
