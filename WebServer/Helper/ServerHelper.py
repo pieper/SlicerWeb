@@ -26,7 +26,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
       # Handle this as a standard request
       #
-      if !os.path.dirname(rest).endswith('slicer'):
+      if not(os.path.dirname(rest).endswith('slicer')):
         os.chdir(self.server.docroot)
         self.logMessage(" ... using SimpleHTTPRequestHandler" )
         SimpleHTTPRequestHandler.do_GET(self)
