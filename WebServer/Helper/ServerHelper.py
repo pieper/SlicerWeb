@@ -45,11 +45,12 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       # Now we're talking to Slicer...
       URL = urlparse( rest )
       ACTION = os.path.basename( URL.path )
-      self.logMessage('Parsing url, action is %s' % ACTION)
+      self.logMessage('Parsing url, action is {' + ACTION +
+	'} query is {' + URL.query + '}')
 
       # and do the write to stdout / Slicer:stdin
       self.server.communicatingWithSlicer = True
-      sys.stdout.write( "/" + ACTION + "/"+ URL.query + "\n")
+      sys.stdout.write( "/" + ACTION + "?"+ URL.query + "\n")
       sys.stdout.flush()
 
       # and read back from stdin / Slicer:stdout
