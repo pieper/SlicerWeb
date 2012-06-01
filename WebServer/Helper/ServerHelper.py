@@ -35,18 +35,18 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       # Got a /slicer request
       #
       if self.server.communicatingWithSlicer:
-	# But we're busy ... write response and return
-	response_headers = [('Content-Type','text/plain')]
-	self.logMessage('Server busy')
-	self.start_response(status, response_headers)
-	self.wfile.write( 'Busy' )
-	return
+        # But we're busy ... write response and return
+        response_headers = [('Content-Type','text/plain')]
+        self.logMessage('Server busy')
+        self.start_response(status, response_headers)
+        self.wfile.write( 'Busy' )
+        return
 
       # Now we're talking to Slicer...
       URL = urlparse( rest )
       ACTION = os.path.basename( URL.path )
       self.logMessage('Parsing url, action is {' + ACTION +
-	'} query is {' + URL.query + '}')
+        '} query is {' + URL.query + '}')
 
       # and do the write to stdout / Slicer:stdin
       self.server.communicatingWithSlicer = True
@@ -56,41 +56,43 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       # and read back from stdin / Slicer:stdout
       count = int(sys.stdin.readline())
       self.logMessage('Trying to read %d bytes from Slicer stdin ...' % count)
-      im = sys.stdin.read(count)
+      body = sys.stdin.read(count)
       self.logMessage("  [done]")
       self.server.communicatingWithSlicer = False
 
       response_headers = [('Content-length', str(count))]
 
       if ACTION == "repl":
-	response_headers += [('Content-Type','text/plain')]
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "preset":
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "mrml":
-	response_headers += [('Content-Type','application/json')]
+        response_headers += [('Content-Type','application/json')]
       elif ACTION == "scene":
-	response_headers += [('Content-Type','application/json')]
+        response_headers += [('Content-Type','application/json')]
       elif ACTION == "timeimage":
-	response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','image/png')]
       elif ACTION == "slice":
-	response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','image/png')]
       elif ACTION == "threeD":
-	response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
-	response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','image/png')]
       elif ACTION == "volumeSelection":
-	response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volume":
-	response_headers += [('Content-Type','application/octet-stream')]
+        response_headers += [('Content-Type','application/octet-stream')]
       elif URL.query.endswith("png"):
-	response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','image/png')]
       else:
-	# didn't match known slicer API commands, so we shouldn't
-	# prevent other slicer connections from completing
-	self.logMessage( 'WARNING: no matching action for:' + rest )
-	response_headers += [('Content-Type','text/plain')]
+        # didn't match known slicer API commands, so we shouldn't
+        # prevent other slicer connections from completing
+        self.logMessage( 'WARNING: no matching action for:' + rest )
+        response_headers += [('Content-Type','text/plain')]
 
-      # FINALLY, write the "im" returned by Slicer as the response
+      # FINALLY, write the "body" returned by Slicer as the response
       self.start_response(status, response_headers)
-      self.wfile.write( im )
+      self.wfile.write( body )
 
     except:
       self.send_error(404, "File not found")
