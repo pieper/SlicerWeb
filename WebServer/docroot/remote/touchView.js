@@ -209,5 +209,7 @@ var touchView = function(options) {
 var touchViewControl;
 $(function(){
   touchViewControl = new touchView({id:"touchView", containerID: "touchViewContainer", size: 15 }); 
-  touchViewControl.draw();
+  $.get('slicer/preset?id=compareView', function(data){
+    touchViewControl.draw();
+  });
 });

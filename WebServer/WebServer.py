@@ -228,6 +228,8 @@ class WebServerLogic:
     try:
       if cmd.find('/repl') == 0:
         return (self.repl(cmd))
+      if cmd.find('/preset') == 0:
+        return (self.preset(cmd))
       if cmd.find('/timeimage') == 0:
         return (self.timeimage())
       if cmd.find('/slice') == 0:
@@ -270,6 +272,47 @@ class WebServerLogic:
     result = str(eval(code, globals()))
     self.logMessage('result: %s' % result)
     return result
+
+  def preset(self,cmd):
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      id = q['id'][0].strip().lower()
+    except KeyError:
+      id = 'default'
+
+    if id == 'compareview':
+      #
+      # first, get the sample data
+      #
+      if not slicer.util.getNodes('MRBrainTumor*'):
+        import SampleData
+        sampleDataLogic = SampleData.SampleDataLogic()
+        tumor1 = sampleDataLogic.downloadMRBrainTumor1()
+        tumor2 = sampleDataLogic.downloadMRBrainTumor2()
+      # set up the display in the default configuration
+      layoutManager = slicer.app.layoutManager()
+      redComposite = layoutManager.sliceWidget('Red').mrmlSliceCompositeNode()
+      yellowComposite = layoutManager.sliceWidget('Yellow').mrmlSliceCompositeNode()
+      redComposite.SetBackgroundVolumeID( tumor1.GetID() )
+      yellowComposite.SetBackgroundVolumeID( tumor2.GetID() )
+      yellowSlice = layoutManager.sliceWidget('Yellow').mrmlSliceNode()
+      yellowSlice.SetOrientationToAxial()
+      tumor1Display = tumor1.GetDisplayNode()
+      tumor2Display = tumor2.GetDisplayNode()
+      tumor2Display.SetAutoWindowLevel(0)
+      tumor2Display.SetWindow(tumor1Display.GetWindow())
+      tumor2Display.SetLevel(tumor1Display.GetLevel())
+    elif id == 'default':
+      #
+      # first, get the sample data
+      #
+      if not slicer.util.getNodes('MR-head*'):
+        import SampleData
+        sampleDataLogic = SampleData.SampleDataLogic()
+        tumor1 = sampleDataLogic.downloadMRHead()
+
+    return ( "got it" )
 
   def transform(self,cmd):
     if not hasattr(self,'p'):
@@ -446,6 +489,10 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       size = int(q['size'][0].strip())
     except (KeyError, ValueError):
       size = None
+    try:
+      orientation = q['orientation'][0].strip()
+    except (KeyError, ValueError):
+      orientation = None
 
     if scrollTo:
       volumeNode = sliceLogic.GetBackgroundLayer().GetVolumeNode()
@@ -455,10 +502,18 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     if offset:
       currentOffset = sliceLogic.GetSliceOffset()
       sliceLogic.SetSliceOffset(currentOffset + offset)
+    if orientation:
+      sliceNode = sliceLogic.GetSliceNode()
+      if orientation.lower() == 'axial':
+        sliceNode.SetOrientationToAxial()
+      if orientation.lower() == 'sagittal':
+        sliceNode.SetOrientationToSagittal()
+      if orientation.lower() == 'coronal':
+        sliceNode.SetOrientationToCoronal()
 
     imageData = sliceLogic.GetImageData()
-    imageData.Update()
     if imageData:
+      imageData.Update()
       imageScalars = imageData.GetPointData().GetScalars()
       imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
       d = imageData.GetDimensions()
