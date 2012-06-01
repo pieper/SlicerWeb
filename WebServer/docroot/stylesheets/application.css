@@ -1,0 +1,11 @@
+.container {
+  padding-left: 20px; }
+
+h1 {
+  font-size: 48px;
+  text-shadow: 4px 4px 4px #777; }
+  h1 .gray {
+    color: #777;
+    vertical-align: top; }
+  h1 .text {
+    vertical-align: top; }

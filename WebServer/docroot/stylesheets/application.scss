@@ -1,0 +1,17 @@
+.container {
+  padding-left: 20px;
+}
+
+h1 {
+  font-size: 48px;
+  text-shadow: 4px 4px 4px #777;
+
+  // border: 1px solid red;
+  .gray {
+    color: #777;
+    vertical-align: top;
+  }
+  .text {
+    vertical-align: top;
+  }
+}

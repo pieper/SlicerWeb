@@ -1,14 +1,18 @@
 !!! 5
 %html{lang: 'en'}
   %head
-    %title Slicer Web Server
+    %title 3DSlicer Web Server
     %link{ :rel => "stylesheet", :href => "stylesheets/application.css" }
     %link{ :rel => "stylesheet", :href => "http://code.jquery.com/mobile/1.1.0/jquery.mobile-1.1.0.min.css" }
     %script{ :src => "http://code.jquery.com/jquery-1.6.4.min.js" }
     %script{ :src => "http://code.jquery.com/mobile/1.1.0/jquery.mobile-1.1.0.min.js" }
   %body
-    %h1 Slicer Web Server
-    %ul
-      %li.page Remote View
-      %li.page1 Diffusion Demo
-      %li.page2 Editing Demo
+    .container 
+      %h1
+        %img{ :src => "images/3DSlicer-DesktopIcon.png" }
+        %span.text
+          <span class='gray'>3D</span>Slicer Web Server
+      %ul
+        %li.page Remote View
+        %li.page1 Diffusion Demo
+        %li.page2 Editing Demo
