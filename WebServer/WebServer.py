@@ -290,6 +290,9 @@ class WebServerLogic:
         sampleDataLogic = SampleData.SampleDataLogic()
         tumor1 = sampleDataLogic.downloadMRBrainTumor1()
         tumor2 = sampleDataLogic.downloadMRBrainTumor2()
+      else:
+        tumor1 = slicer.util.getNode('MRBrainTumor1')
+        tumor2 = slicer.util.getNode('MRBrainTumor2')
       # set up the display in the default configuration
       layoutManager = slicer.app.layoutManager()
       redComposite = layoutManager.sliceWidget('Red').mrmlSliceCompositeNode()
@@ -298,6 +301,8 @@ class WebServerLogic:
       yellowComposite.SetBackgroundVolumeID( tumor2.GetID() )
       yellowSlice = layoutManager.sliceWidget('Yellow').mrmlSliceNode()
       yellowSlice.SetOrientationToAxial()
+      redSlice = layoutManager.sliceWidget('Red').mrmlSliceNode()
+      redSlice.SetOrientationToAxial()
       tumor1Display = tumor1.GetDisplayNode()
       tumor2Display = tumor2.GetDisplayNode()
       tumor2Display.SetAutoWindowLevel(0)
