@@ -1,11 +1,11 @@
 .container {
   padding-left: 20px; }
 
-h1 {
+#slicer_header {
   font-size: 48px;
-  text-shadow: 4px 4px 4px #777; }
-  h1 .gray {
-    color: #777;
+  text-shadow: 2px 2px 3px #777; }
+  #slicer_header .gray {
+    color: #77c;
     vertical-align: top; }
-  h1 .text {
+  #slicer_header .text {
     vertical-align: top; }

@@ -2,17 +2,29 @@
 %html{lang: 'en'}
   %head
     %title 3DSlicer Web Server
-    %link{ :rel => "stylesheet", :href => "stylesheets/application.css" }
     %link{ :rel => "stylesheet", :href => "http://code.jquery.com/mobile/1.1.0/jquery.mobile-1.1.0.min.css" }
+    %link{ :rel => "stylesheet", :href => "stylesheets/application.css" }
     %script{ :src => "http://code.jquery.com/jquery-1.6.4.min.js" }
     %script{ :src => "http://code.jquery.com/mobile/1.1.0/jquery.mobile-1.1.0.min.js" }
   %body
-    .container 
-      %h1
-        %img{ :src => "images/3DSlicer-DesktopIcon.png" }
-        %span.text
-          <span class='gray'>3D</span>Slicer Web Server
-      %ul
-        %li.page Remote View
-        %li.page1 Diffusion Demo
-        %li.page2 Editing Demo
+    %div{ "data-role" => "page" }
+      .ui-bar.ui-bar-c
+        #slicer_header
+          %img{ :src => "images/3DSlicer-DesktopIcon.png" }
+          %span.text
+            <span class='gray'>3D</span>Slicer Web Server
+
+      %div{ "data-role" => "content" }
+        %ul{ "data-role" => "listview" }
+          %li
+            %a{ :href => "remote/index.html" }
+              %h3 Compare Views
+              %p Pre-op and intra-surgical MRI acquistions
+          %li
+            %a.ui-disabled{ :href => "#" }
+              %h3 Diffusion Demo
+              %p Analysis of DTI tracks
+          %li
+            %a.ui-disabled{ :href => "#" }
+              %h3 Editing Demo
+              %p Interactive mulit-label, supervised segmentation
