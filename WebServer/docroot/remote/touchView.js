@@ -27,6 +27,9 @@ var touchView = function(options) {
             self.mouseDragging = false;
             self.nextImageSource = "";
             self.requestingImage = false;
+
+	    self.view_color =
+	      typeof options.view !== 'undefined' ? options.view : "";
         },
 
         //
@@ -147,6 +150,11 @@ var touchView = function(options) {
           if ( selection == 'Coronal' ) view = 'Green';
           if ( selection == 'ThreeD' ) view = 'ThreeD';
 
+	  if (self.view_color != "") {
+	    view = self.view_color;
+	    console.log( "HOOT " + self.view_color );
+	  }
+
           if ( selection == 'ThreeD' ) {
             src = "slicer/threeD?view=1"
           } else {
@@ -210,14 +218,19 @@ var touchViewControl;
 var touchViewControl_2;
 
 $(function(){
-  touchViewControl = new touchView(
-    {id:"touchView", containerID: "touchViewContainer", size: 15 }
-  ); 
+  touchViewControl = new touchView( {
+    id:"touchView",
+    containerID: "touchViewContainer",
+    size: 256,
+    view: "Red"
+  }); 
 
-  touchViewControl_2 = new touchView(
-    {id:"touchView_2", containerID: "touchViewContainer_2", size: 15 }
-  ); 
-
+  touchViewControl_2 = new touchView( {
+    id:"touchView_2",
+    containerID: "touchViewContainer_2",
+    size: 256,
+    view: "Yellow"
+  }); 
 
   $.get('slicer/preset?id=compareView', function(data){
     touchViewControl.draw();
