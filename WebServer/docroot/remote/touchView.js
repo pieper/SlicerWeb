@@ -143,22 +143,16 @@ var touchView = function(options) {
           };      
 
           var time = (new Date()).getTime();
-          view = "Red"
           selection = $('#sliceModeBar').data('selected');
-          if ( selection == 'Axial' ) view = 'Red';
-          if ( selection == 'Sagittal' ) view = 'Yellow';
-          if ( selection == 'Coronal' ) view = 'Green';
-          if ( selection == 'ThreeD' ) view = 'ThreeD';
 
 	  if (self.view_color != "") {
 	    view = self.view_color;
-	    console.log( "HOOT " + self.view_color );
 	  }
 
           if ( selection == 'ThreeD' ) {
             src = "slicer/threeD?view=1"
           } else {
-            src = "slicer/slice?view=" + view 
+            src = "slicer/slice?view=" + view + "&orientation=" + selection;
 
             if (typeof args.offset !== 'undefined') {
               src += "&offset=" + args.offset;
