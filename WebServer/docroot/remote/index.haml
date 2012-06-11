@@ -38,18 +38,22 @@
           width: 512px;
           color: black;
         }
-
         canvas {
           width: 512px;
           color: black;
+        }
+        .ui-bar {
+          height: 24px;
         }
 
       .ui-grid-a
         .ui-block-a
           #touchViewContainer
+            .ui-bar.ui-bar-b
             %canvas#touchView
         .ui-block-b
           #touchViewContainer_2
+            .ui-bar.ui-bar-e
             %canvas#touchView_2
 
     %script{ :src => "touchVolumes.js" }
