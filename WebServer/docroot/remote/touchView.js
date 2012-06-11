@@ -57,6 +57,10 @@ var touchView = function(options) {
             } else {
               scrollTo = (1. * event.touches[0].pageY) / ctxt.canvas.height;
               self.draw({scrollTo: scrollTo, size: 256});
+
+	      if (typeof self.ganged_ViewControl !== 'undefined') {
+		self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
+	      }
             }
 
             event.preventDefault();
@@ -88,6 +92,10 @@ var touchView = function(options) {
               } else {
                 scrollTo = (1. * event.offsetY) / ctxt.canvas.height;
                 self.draw({scrollTo: scrollTo, size: 256});
+
+		if (typeof self.ganged_ViewControl !== 'undefined') {
+		  self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
+		}
                 event.preventDefault();
               }
             }
@@ -225,6 +233,9 @@ $(function(){
     size: 256,
     view: "Yellow"
   }); 
+
+  touchViewControl.ganged_ViewControl = touchViewControl_2;
+  touchViewControl_2.ganged_ViewControl = touchViewControl;
 
   $.get('slicer/preset?id=compareView', function(data){
     touchViewControl.draw();
