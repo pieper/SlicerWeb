@@ -14,8 +14,6 @@ except ImportError:
 
 import numpy
 
-import PIL
-
 #
 # WebServer
 #
@@ -476,7 +474,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
-    from PIL import Image
+    import png
     import vtk.util.numpy_support
     import numpy
     import slicer
@@ -530,17 +528,23 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       imageData.Update()
       imageScalars = imageData.GetPointData().GetScalars()
       imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
-      d = imageData.GetDimensions()
-      im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],4]) ) )
+      columns, rows, slices = imageData.GetDimensions()
+      # im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],4]) ) )
+      im = numpy.flipud( imageArray.reshape([rows,columns*4]) )
     else:
       # no data available, make a small black opaque image
       a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
       a[:,:,3] = 255
-      im = Image.fromarray( a )
+      # im = Image.fromarray( a )
     if size:
-      im.thumbnail((size,size), Image.ANTIALIAS)
+      # im.thumbnail((size,size), Image.ANTIALIAS)
+      pass
     pngData = StringIO.StringIO()
-    im.save(pngData, format="PNG")
+    #im.save(pngData, format="PNG")
+    pngWriter = png.Writer(width=im.shape[1]/4, height=im.shape[0], 
+        greyscale=False, alpha=True, bitdepth=8, compression=1)
+    pngWriter.write(pngData, im)
+
     self.logMessage('returning an image of %d length' % len(pngData.getvalue()))
     return pngData.getvalue()
 
@@ -549,7 +553,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     Args:
      view={nodeid} (currently ignored)
     """
-    from PIL import Image
     import numpy
     import vtk.util.numpy_support
     import slicer
