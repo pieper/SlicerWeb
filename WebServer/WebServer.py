@@ -318,9 +318,10 @@ class WebServerLogic:
       if not slicer.util.getNodes('MR-head*'):
         import SampleData
         sampleDataLogic = SampleData.SampleDataLogic()
-        tumor1 = sampleDataLogic.downloadMRHead()
+        head = sampleDataLogic.downloadMRHead()
+        return ( json.dumps([head.GetName(),]) )
 
-    return ( "got it" )
+    return ( "no matching preset" )
 
   def transform(self,cmd):
     if not hasattr(self,'p'):
