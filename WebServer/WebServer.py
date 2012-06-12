@@ -308,6 +308,8 @@ class WebServerLogic:
       tumor2Display.SetAutoWindowLevel(0)
       tumor2Display.SetWindow(tumor1Display.GetWindow())
       tumor2Display.SetLevel(tumor1Display.GetLevel())
+      applicationLogic = slicer.app.applicationLogic()
+      applicationLogic.FitSliceToAll()
       return ( json.dumps([tumor1.GetName(), tumor2.GetName()]) )
     elif id == 'default':
       #
