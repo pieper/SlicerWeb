@@ -56,10 +56,10 @@ var touchView = function(options) {
               self.draw({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
             } else {
               scrollTo = (1. * event.touches[0].pageY) / ctxt.canvas.height;
-              self.draw({scrollTo: scrollTo, size: 256});
+              self.draw({scrollTo: scrollTo, size: 'native'});
 
               if (typeof self.ganged_ViewControl !== 'undefined') {
-                self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
+                self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 'native'});
               }
             }
 
@@ -91,10 +91,10 @@ var touchView = function(options) {
                 self.draw({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
               } else {
                 scrollTo = (1. * event.offsetY) / ctxt.canvas.height;
-                self.draw({scrollTo: scrollTo, size: 256});
+                self.draw({scrollTo: scrollTo, size: 'native'});
 
                 if (typeof self.ganged_ViewControl !== 'undefined') {
-                  self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
+                  self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 'native'});
                 }
                 event.preventDefault();
               }
@@ -223,14 +223,14 @@ $(function(){
   touchViewControl = new touchView( {
     id:"touchView",
     containerID: "touchViewContainer",
-    size: 256,
+    size: 'native',
     view: "Red"
   }); 
 
   touchViewControl_2 = new touchView( {
     id:"touchView_2",
     containerID: "touchViewContainer_2",
-    size: 256,
+    size: 'native',
     view: "Yellow"
   }); 
 
