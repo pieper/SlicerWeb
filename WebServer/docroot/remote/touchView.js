@@ -28,8 +28,8 @@ var touchView = function(options) {
             self.nextImageSource = "";
             self.requestingImage = false;
 
-	    self.view_color =
-	      typeof options.view !== 'undefined' ? options.view : "";
+            self.view_color =
+                typeof options.view !== 'undefined' ? options.view : "";
         },
 
         //
@@ -58,9 +58,9 @@ var touchView = function(options) {
               scrollTo = (1. * event.touches[0].pageY) / ctxt.canvas.height;
               self.draw({scrollTo: scrollTo, size: 256});
 
-	      if (typeof self.ganged_ViewControl !== 'undefined') {
-		self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
-	      }
+              if (typeof self.ganged_ViewControl !== 'undefined') {
+                self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
+              }
             }
 
             event.preventDefault();
@@ -93,9 +93,9 @@ var touchView = function(options) {
                 scrollTo = (1. * event.offsetY) / ctxt.canvas.height;
                 self.draw({scrollTo: scrollTo, size: 256});
 
-		if (typeof self.ganged_ViewControl !== 'undefined') {
-		  self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
-		}
+                if (typeof self.ganged_ViewControl !== 'undefined') {
+                  self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 256});
+                }
                 event.preventDefault();
               }
             }
@@ -153,9 +153,9 @@ var touchView = function(options) {
           var time = (new Date()).getTime();
           selection = $('#sliceModeBar').data('selected');
 
-	  if (self.view_color != "") {
-	    view = self.view_color;
-	  }
+          if (self.view_color != "") {
+            view = self.view_color;
+          }
 
           if ( selection == 'ThreeD' ) {
             src = "slicer/threeD?view=1"
