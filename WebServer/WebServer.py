@@ -42,6 +42,8 @@ class WebServerWidget:
 
   def __init__(self, parent=None):
     self.observerTags = []
+    self.qtMessages = False
+    self.consoleMessages = False
 
     if not parent:
       self.parent = slicer.qMRMLWidget()
@@ -114,13 +116,16 @@ class WebServerWidget:
 
 
   def logMessage(self,*args):
-    for arg in args:
-      print(arg)
-      self.log.insertHtml(arg)
-    self.log.insertPlainText('\n')
-    self.log.ensureCursorVisible()
-    self.log.repaint()
-    slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+    if self.consoleMessages:
+      for arg in args:
+        print(arg)
+    if self.qtMessages:
+      for arg in args:
+        self.log.insertHtml(arg)
+      self.log.insertPlainText('\n')
+      self.log.ensureCursorVisible()
+      self.log.repaint()
+      slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
 
 #
 # WebServer logic
