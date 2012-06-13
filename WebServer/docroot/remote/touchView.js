@@ -48,7 +48,12 @@ var touchView = function(options) {
             self.requestAndRender({mode: 'start'});
             self.startX = (1. * event.touches[0].pageX);
             self.startY = (1. * event.touches[0].pageY);
-            self.startTouches = event.touches;
+
+            if (event.touches.length > 1) {
+              dx = event.touches[0].pageX - event.touches[1].pageX;
+              dy = event.touches[0].pageY - event.touches[1].pageY;
+              self.startDist = Math.sqrt( dx*dx + dy*dy );
+            }
 
             event.preventDefault();
         },
@@ -72,11 +77,17 @@ var touchView = function(options) {
               }
             } else {
               // multitouch (only look at first 2)
-              startX = (self.startTouches[0].pageX + self.startTouches[1].pageX)/2.;
-              startY = (self.startTouches[0].pageY + self.startTouches[1].pageY)/2.;
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
-              panZoom = {pan: {x: (now.X - self.startX), y: (now.X - self.startX)}, zoom: 1};
+              pan = {x: (nowX - self.startX), y: (nowY - self.startY)};
+
+              dx = event.touches[0].pageX - event.touches[1].pageX;
+              dy = event.touches[0].pageY - event.touches[1].pageY;
+              nowDist = Math.sqrt( dx*dx + dy*dy );
+
+              strain = Math.abs(nowDist - self.startDist)/self.startDist;
+
+              panZoom = {pan: pan, zoom: strain};
               self.setPanZoom(panZoom);
               self.render();
               if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -144,15 +155,15 @@ var touchView = function(options) {
         },
 
         setPanZoom: function(args) {
-          if (typeof args.pan !== 'undefined') {
+          if (typeof args.pan == 'undefined') {
             args.pan = {x: 0, y: 0};
           }
-          if (typeof args.zoom !== 'undefined') {
+          if (typeof args.zoom == 'undefined') {
             args.zoom = 1;
           }
-          self.setTransform(1,0,0,1,0,0);
-          self.translate(args.pan.x, args.pan.y);
-          self.scale(args.zoom);
+          self.ctxt.setTransform(1,0,0,1,0,0);
+          self.ctxt.translate(args.pan.x, args.pan.y);
+          self.ctxt.scale(args.zoom,args.zoom);
         },
 
         render: function(args) {
