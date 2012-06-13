@@ -246,9 +246,9 @@ class WebServerLogic:
       if cmd.find('/mrml') == 0:
         self.logMessage ("got request for mrml")
         return (self.mrml(cmd))
-      if cmd.find('/transform') == 0:
-        self.logMessage ("got request for transform")
-        return (self.transform(cmd))
+      if cmd.find('/transformInSlice') == 0:
+        self.logMessage ("got request for transformInSlice")
+        return (self.transformInSlice(cmd))
       if cmd.find('/volumeSelection') == 0:
         self.logMessage ("got request for volumeSelection")
         return (self.volumeSelection(cmd))
@@ -316,19 +316,85 @@ class WebServerLogic:
       applicationLogic = slicer.app.applicationLogic()
       applicationLogic.FitSliceToAll()
       return ( json.dumps([tumor1.GetName(), tumor2.GetName()]) )
+    elif id == 'transform':
+      #
+      # first, get the sample data
+      # then give it a transform
+      #
+      if not slicer.util.getNodes('MRHead*'):
+        import SampleData
+        sampleDataLogic = SampleData.SampleDataLogic()
+        head = sampleDataLogic.downloadMRHead()
+      if not slicer.util.getNodes('Transform-head'):
+        # Create transform node
+        transform = slicer.vtkMRMLLinearTransformNode()
+        transform.SetName('Transform-head')
+        slicer.mrmlScene.AddNode(transform)
+      head = slicer.util.getNode('MRHead')
+      transform = slicer.util.getNode('Transform-head')
+      head.SetAndObserveTransformNodeID(transform.GetID())
+      return ( json.dumps([head.GetName(), transform.GetName()]) )
     elif id == 'default':
       #
       # first, get the sample data
       #
-      if not slicer.util.getNodes('MR-head*'):
+      if not slicer.util.getNodes('MRHead*'):
         import SampleData
         sampleDataLogic = SampleData.SampleDataLogic()
         head = sampleDataLogic.downloadMRHead()
-        return ( json.dumps([head.GetName(),]) )
+      return ( json.dumps([head.GetName(),]) )
 
     return ( "no matching preset" )
 
-  def transform(self,cmd):
+  def transformInSlice(self,cmd):
+    """
+    http://localhost:8070/slicer/transformInSlice?mode=start&view=Red&id=Transform-head&dx=0.5&dy=0.5&dl=0&theta=0
+    """
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      view = q['view'][0].strip().lower()
+    except KeyError:
+      view = 'red'
+    options = ['red', 'yellow', 'green']
+    if not view in options:
+      view = 'red'
+    sliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % view.capitalize() )
+    sliceNode = sliceLogic.GetSliceNode()
+    sliceToRAS = sliceNode.GetSliceToRAS()
+    dimensions = sliceNode.GetDimensions()
+    xToRAS = numpy.array([sliceToRAS.GetElement(0,0), 
+                          sliceToRAS.GetElement(1,0), 
+                          sliceToRAS.GetElement(2,0)]) * dimensions[0]
+    yToRAS = numpy.array([sliceToRAS.GetElement(0,1), 
+                          sliceToRAS.GetElement(1,1), 
+                          sliceToRAS.GetElement(2,1)]) * dimensions[1]
+    try:
+      mode = str(q['mode'][0].strip())
+    except (KeyError, ValueError):
+      mode = None
+    dp = numpy.array([float(q['dx'][0]), float(q['dy'][0]),0])
+    dl = float(q['dl'][0])
+    theta = float(q['theta'][0])
+    id = q['id'][0]
+    transform = slicer.util.getNode(id)
+    # make sure m is the transform at the start of the interaction
+    m = transform.GetMatrixTransformToParent()
+    if mode == 'start' or not self.interactionState.has_key('transform'):
+      startTransform = vtk.vtkMatrix4x4()
+      startTransform.DeepCopy(m)
+      self.interactionState['transform'] = startTransform
+
+    dRAS = dp*xToRAS + dp*yToRAS
+    rasToRAS = vtk.vtkMatrix4x4()
+    for row in xrange(3):
+      rasToRAS.SetElement(row,3, dRAS[row])
+    m.Multiply4x4(rasToRAS, self.interactionState['transform'], m)
+    transform.InvokeEvent(transform.TransformModifiedEvent)
+    return ( "got it" )
+
+  def intertialTracker(self,cmd):
+    """Not currently used - see tracker experiment"""
     if not hasattr(self,'p'):
       self.p = numpy.zeros(3)
       self.dpdt = numpy.zeros(3)

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <title>Slicer Remote</title>
+    <meta content='width=device-width, initial-scale=1' name='viewport'>
+    <link href='http://code.jquery.com/mobile/1.1.0/jquery.mobile-1.1.0.min.css' rel='stylesheet'>
+    <!-- / %link{ :rel => "stylesheet", :href => "css/application.css" } -->
+    <script src='http://code.jquery.com/jquery-1.6.4.min.js'></script>
+    <script src='http://code.jquery.com/mobile/1.1.0/jquery.mobile-1.1.0.min.js'></script>
+  </head>
+  <body>
+    <div data-role='page' data-title='3D Slicer Transform Control' id='page1'>
+      <div data-iconpos='top' data-role='navbar' id='sliceModeBar' selected='Axial'>
+        <ul>
+          <li>
+            <a class='ui-btn-active' data-icon='' data-theme='' href='#page1' id='Axial'>
+              Axial
+            </a>
+          </li>
+          <li>
+            <a data-icon='' data-theme='' href='#page1' id='Sagittal'>
+              Sagittal
+            </a>
+          </li>
+          <li>
+            <a data-icon='' data-theme='' href='#page1' id='Coronal'>
+              Coronal
+            </a>
+          </li>
+        </ul>
+      </div>
+      <style>
+        /*<![CDATA[*/
+          #touchTransformContainer {
+            border: 1px solid #00c;
+            width: 512px;
+            color: black;
+          }
+          canvas {
+            color: black;
+          }
+          .ui-bar {
+            height: 24px;
+          }
+          #log {
+            width: 200px;
+            height: 200px;
+            border: 0px solid red;
+            position: absolute;
+            bottom: -0px;
+            left: 10px;
+          }
+          #page1 {
+            position: relative;
+          }
+        /*]]>*/
+      </style>
+      <div id='touchTransformContainer'>
+        <div class='ui-bar ui-bar-d'>
+          Transform Controls Demo
+        </div>
+          <canvas id='touchTransform'></canvas>
+        <p>Drag in this region to control the transform in slicer.</p>
+      </div>
+    </div>
+    <div id='log'></div>
+    <script src='../slicerjs/touchNav.js'></script>
+    <script src='../slicerjs/touchTransform.js'></script>
+  </body>
+</html>
