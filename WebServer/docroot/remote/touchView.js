@@ -76,9 +76,13 @@ var touchView = function(options) {
               startY = (self.startTouches[0].pageY + self.startTouches[1].pageY)/2.;
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
-              self.pan.x = (nowX - self.startX);
-              self.pan.y = (nowY - self.startY);
+              panZoom = {pan: {x: (now.X - self.startX), y: (now.X - self.startX)}, zoom: 1};
+              self.setPanZoom(panZoom);
               self.render();
+              if (typeof self.ganged_ViewControl !== 'undefined') {
+                self.ganged_ViewControl.setPanZoom(panZoom);
+                self.ganged_ViewControl.render();
+              }
             }
 
             event.preventDefault();
@@ -137,6 +141,18 @@ var touchView = function(options) {
           else if (document.execCommand !== undefined) {
             document.execCommand("Stop", false);
           }
+        },
+
+        setPanZoom: function(args) {
+          if (typeof args.pan !== 'undefined') {
+            args.pan = {x: 0, y: 0};
+          }
+          if (typeof args.zoom !== 'undefined') {
+            args.zoom = 1;
+          }
+          self.setTransform(1,0,0,1,0,0);
+          self.translate(args.pan.x, args.pan.y);
+          self.scale(args.zoom);
         },
 
         render: function(args) {
