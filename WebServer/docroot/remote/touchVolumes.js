@@ -1,14 +1,14 @@
 $(function(){
  $('#Next').click(function(event) {
-   $.ajax({ url: "slicer/volumeSelection?cmd=Next" 
+   $.ajax({ url: "slicer/volumeSelection?cmd=Next"
    }).done(function() {
-     touchViewControl.draw(0);
+     touchViewControl.requestAndRender();
    });
  });
  $('#Previous').click(function(event) {
-   $.ajax({ url: "slicer/volumeSelection?cmd=Previous" 
+   $.ajax({ url: "slicer/volumeSelection?cmd=Previous"
    }).done(function() {
-     touchViewControl.draw(0);
+     touchViewControl.requestAndRender();
    });
  });
 });

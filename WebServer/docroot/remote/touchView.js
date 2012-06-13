@@ -1,15 +1,4 @@
 var touchView = function(options) {
-    // grab canvas element
-    var canvas = document.getElementById(options.id),
-        ctxt = canvas.getContext("2d"),
-        container = document.getElementById(options.containerID);
-        
-    canvas.style.width = '100%'
-    canvas.width = canvas.offsetWidth;
-    canvas.style.width = '';
-
-    ctxt.canvas.width = container.scrollWidth;
-    ctxt.canvas.height = window.innerHeight;
 
     var self = {
         //
@@ -17,12 +6,28 @@ var touchView = function(options) {
         // - initialize variables
         //
         init: function() {
-            canvas.addEventListener('touchstart', self.onTouchStart, false);
-            canvas.addEventListener('touchmove', self.onTouchMove, false);
-            canvas.addEventListener('touchend', self.onTouchEnd, false);
-            canvas.addEventListener('mousedown', self.onMouseDown, false);
-            canvas.addEventListener('mousemove', self.onMouseMove, false);
-            canvas.addEventListener('mouseup', self.onMouseUp, false);
+            // grab canvas element
+            self.canvas = document.getElementById(options.id);
+            self.ctxt = self.canvas.getContext("2d");
+            self.container = document.getElementById(options.containerID);
+
+            self.pan = {x: 0, y:0};
+            self.zoom = 1;
+            self.imageObj = new Image();
+
+            self.canvas.style.width = '100%'
+            self.canvas.width = self.canvas.offsetWidth;
+            self.canvas.style.width = '';
+
+            self.ctxt.canvas.width = self.container.scrollWidth;
+            self.ctxt.canvas.height = window.innerHeight;
+
+            self.canvas.addEventListener('touchstart', self.onTouchStart, false);
+            self.canvas.addEventListener('touchmove', self.onTouchMove, false);
+            self.canvas.addEventListener('touchend', self.onTouchEnd, false);
+            self.canvas.addEventListener('mousedown', self.onMouseDown, false);
+            self.canvas.addEventListener('mousemove', self.onMouseMove, false);
+            self.canvas.addEventListener('mouseup', self.onMouseUp, false);
 
             self.mouseDragging = false;
             self.nextImageSource = "";
@@ -40,26 +45,43 @@ var touchView = function(options) {
             // TODO: different behaviors based on multitouch
             $.each(event.touches, function(i, touch) {
             });
-            self.draw({mode: 'start'});
+            self.requestAndRender({mode: 'start'});
             self.startX = (1. * event.touches[0].pageX);
             self.startY = (1. * event.touches[0].pageY);
+            self.startTouches = event.touches;
 
             event.preventDefault();
         },
 
         onTouchMove: function(event) {
 
-            deltaX = (event.touches[0].pageX - self.startX) / ctxt.canvas.width;
-            deltaY = (event.touches[0].pageY - self.startY) / ctxt.canvas.height;
-            selection = $('#sliceModeBar').data('selected');
-            if ( selection == 'ThreeD' ) {
-              self.draw({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
-            } else {
-              scrollTo = (1. * event.touches[0].pageY) / ctxt.canvas.height;
-              self.draw({scrollTo: scrollTo, size: 'native'});
+            if (event.touches.length == 1) {
+              // single touch
+              deltaX = (event.touches[0].pageX - self.startX) / self.ctxt.canvas.width;
+              deltaY = (event.touches[0].pageY - self.startY) / self.ctxt.canvas.height;
+              selection = $('#sliceModeBar').data('selected');
+              if ( selection == 'ThreeD' ) {
+                self.requestAndRender({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
+              } else {
+                scrollTo = (1. * event.touches[0].pageY) / self.ctxt.canvas.height;
+                self.requestAndRender({scrollTo: scrollTo, size: 'native'});
 
+                if (typeof self.ganged_ViewControl !== 'undefined') {
+                  self.ganged_ViewControl.requestAndRender({scrollTo: scrollTo, size: 'native'});
+                }
+              }
+            } else {
+              // multitouch (only look at first 2)
+              startX = (self.startTouches[0].pageX + self.startTouches[1].pageX)/2.;
+              startY = (self.startTouches[0].pageY + self.startTouches[1].pageY)/2.;
+              nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
+              nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
+              panZoom = {pan: {x: (now.X - self.startX), y: (now.X - self.startX)}, zoom: 1};
+              self.setPanZoom(panZoom);
+              self.render();
               if (typeof self.ganged_ViewControl !== 'undefined') {
-                self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 'native'});
+                self.ganged_ViewControl.setPanZoom(panZoom);
+                self.ganged_ViewControl.render();
               }
             }
 
@@ -67,7 +89,7 @@ var touchView = function(options) {
         },
 
         onTouchEnd: function(event) {
-            self.draw({force: true});
+            self.requestAndRender({force: true});
             event.preventDefault();
         },
 
@@ -77,7 +99,7 @@ var touchView = function(options) {
         onMouseDown: function(event) {
 
             self.mouseDragging = true;
-            self.draw({mode: 'start'});
+            self.requestAndRender({mode: 'start'});
             self.startX = (1. * event.offsetX);
             self.startY = (1. * event.offsetY);
             event.preventDefault();
@@ -85,16 +107,16 @@ var touchView = function(options) {
 
         onMouseMove: function(event) {
             if (self.mouseDragging) {
-              deltaX = (event.offsetX - self.startX) / ctxt.canvas.width;
-              deltaY = (event.offsetY - self.startY) / ctxt.canvas.height;
+              deltaX = (event.offsetX - self.startX) / self.ctxt.canvas.width;
+              deltaY = (event.offsetY - self.startY) / self.ctxt.canvas.height;
               if ( selection == 'ThreeD' ) {
-                self.draw({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
+                self.requestAndRender({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
               } else {
-                scrollTo = (1. * event.offsetY) / ctxt.canvas.height;
-                self.draw({scrollTo: scrollTo, size: 'native'});
+                scrollTo = (1. * event.offsetY) / self.ctxt.canvas.height;
+                self.requestAndRender({scrollTo: scrollTo, size: 'native'});
 
                 if (typeof self.ganged_ViewControl !== 'undefined') {
-                  self.ganged_ViewControl.draw({scrollTo: scrollTo, size: 'native'});
+                  self.ganged_ViewControl.requestAndRender({scrollTo: scrollTo, size: 'native'});
                 }
                 event.preventDefault();
               }
@@ -103,15 +125,14 @@ var touchView = function(options) {
 
         onMouseUp: function(event) {
             self.mouseDragging = false;
-            self.draw({force: true});
+            self.requestAndRender({force: true});
             event.preventDefault();
         },
-                   
 
         //
         // Downloads and Drawing
         //
- 
+
         stopDownloads: function() {
           //cancel image downloads
           if (window.stop !== undefined) {
@@ -119,36 +140,50 @@ var touchView = function(options) {
           }
           else if (document.execCommand !== undefined) {
             document.execCommand("Stop", false);
-          }   
+          }
         },
 
-        draw: function(args) {
-          args = typeof args !== 'undefined' ? args : {};
-          force = typeof args.force !== 'undefined' ? args.force : false;
+        setPanZoom: function(args) {
+          if (typeof args.pan !== 'undefined') {
+            args.pan = {x: 0, y: 0};
+          }
+          if (typeof args.zoom !== 'undefined') {
+            args.zoom = 1;
+          }
+          self.setTransform(1,0,0,1,0,0);
+          self.translate(args.pan.x, args.pan.y);
+          self.scale(args.zoom);
+        },
 
-          var imageObj = new Image();
-
-          imageObj.onload = function() {
-            widthScale = ctxt.canvas.width / imageObj.width;
-            heightScale = ctxt.canvas.height / imageObj.height;
+        render: function(args) {
+            widthScale = self.ctxt.canvas.width / self.imageObj.width;
+            heightScale = self.ctxt.canvas.height / self.imageObj.height;
             if (widthScale > heightScale) {
               scale = heightScale;
             } else {
               scale = widthScale;
             }
-            drawWidth = scale * imageObj.width;
-            drawHeight = scale * imageObj.height;
-            margin = (ctxt.canvas.width - drawWidth) / 2;
-            ctxt.clearRect( 0, 0, ctxt.canvas.width, ctxt.canvas.height );
-            ctxt.drawImage( imageObj, margin, 0, drawWidth, drawHeight );
+            drawWidth = scale * self.imageObj.width;
+            drawHeight = scale * self.imageObj.height;
+            margin = (self.ctxt.canvas.width - drawWidth) / 2;
+            self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
+            self.ctxt.drawImage( self.imageObj, self.pan.x + margin, self.pan.y + 0, self.zoom * drawWidth, self.zoom * drawHeight );
+        },
+
+        requestAndRender: function(args) {
+          args = typeof args !== 'undefined' ? args : {};
+          force = typeof args.force !== 'undefined' ? args.force : false;
+
+          self.imageObj.onload = function() {
+            self.render();
             if (self.nextImageSource != '') {
               self.requestingImage = true;
-              imageObj.src = self.nextImageSource;
+              self.imageObj.src = self.nextImageSource;
               self.nextImageSource = '';
             } else {
               self.requestingImage = false;
             }
-          };      
+          };
 
           var time = (new Date()).getTime();
           selection = $('#sliceModeBar').data('selected');
@@ -203,7 +238,7 @@ var touchView = function(options) {
           }
           if ( !self.requestingImage ) {
             self.requestingImage = true;
-            imageObj.src = src;
+            self.imageObj.src = src;
             self.nextImageSource = '';
           } else {
             self.nextImageSource = src;
@@ -225,20 +260,20 @@ $(function(){
     containerID: "touchViewContainer",
     size: 'native',
     view: "Red"
-  }); 
+  });
 
   touchViewControl_2 = new touchView( {
     id:"touchView_2",
     containerID: "touchViewContainer_2",
     size: 'native',
     view: "Yellow"
-  }); 
+  });
 
   touchViewControl.ganged_ViewControl = touchViewControl_2;
   touchViewControl_2.ganged_ViewControl = touchViewControl;
 
   $.get('slicer/preset?id=compareView', function(data){
-    touchViewControl.draw();
-    touchViewControl_2.draw();
+    touchViewControl.requestAndRender();
+    touchViewControl_2.requestAndRender();
   });
 });
