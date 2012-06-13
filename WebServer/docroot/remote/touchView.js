@@ -42,14 +42,15 @@ var touchView = function(options) {
         // TOUCH events
         //
         onTouchStart: function(event) {
-            // TODO: different behaviors based on multitouch
             $.each(event.touches, function(i, touch) {
             });
-            self.startX = (1. * event.touches[0].pageX);
-            self.startY = (1. * event.touches[0].pageY);
             if (event.touches.length == 1) {
+              self.startX = (1. * event.touches[0].pageX);
+              self.startY = (1. * event.touches[0].pageY);
               self.requestAndRender({mode: 'start'});
             } else {
+              self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
+              self.startX = (event.touches[0].pageY + event.touches[1].pageY)/2.;
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
               self.startDist = Math.sqrt( dx*dx + dy*dy );
@@ -84,10 +85,10 @@ var touchView = function(options) {
               dy = event.touches[0].pageY - event.touches[1].pageY;
               nowDist = Math.sqrt( dx*dx + dy*dy );
 
-              strain = Math.abs(nowDist - self.startDist)/self.startDist;
+              zoom = nowDist / self.startDist;
 
               zoomCenter = {x: nowX, y: nowY};
-              panZoom = {pan: pan, zoom: 1+strain, zoomCenter: zoomCenter};
+              panZoom = {pan: pan, zoom: zoom, zoomCenter: zoomCenter};
               self.setPanZoom(panZoom);
               self.render();
               if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -100,7 +101,6 @@ var touchView = function(options) {
         },
 
         onTouchEnd: function(event) {
-            //self.requestAndRender({force: true});
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
               self.ganged_ViewControl.render();
@@ -189,6 +189,7 @@ var touchView = function(options) {
             drawHeight = scale * self.imageObj.height;
             margin = (self.ctxt.canvas.width - drawWidth) / 2;
             self.ctxt.save();
+            self.ctxt.setTransform( 1,0, 0,1, 0,0 );
             self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
             self.ctxt.restore();
             self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
