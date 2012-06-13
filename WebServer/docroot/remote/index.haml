@@ -45,6 +45,17 @@
         .ui-bar {
           height: 24px;
         }
+        #log {
+          width: 200px;
+          height: 200px;
+          border: 1px solid red;
+          position: absolute;
+          top: 0px;
+          left: 0px;
+        }
+        #page1 {
+          position: relative;
+        }
 
       .ui-grid-a
         .ui-block-a
@@ -57,6 +68,8 @@
             .ui-bar.ui-bar-e
               Intra-op acquisition
             %canvas#touchView_2
+
+    #log
 
     %script{ :src => "touchVolumes.js" }
     %script{ :src => "touchNav.js" }
