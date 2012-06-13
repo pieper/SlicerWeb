@@ -76,7 +76,7 @@ var touchView = function(options) {
                 }
               }
             } else {
-              // multitouch (only look at first 2)
+              // multitouch (only look at first 2 touch points)
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
               pan = {x: (nowX - self.startX), y: (nowY - self.startY)};
