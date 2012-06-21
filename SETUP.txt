@@ -1,0 +1,28 @@
+Connecting to the AWS Slicer server
+===================================
+
+$ ssh -C -L 5900:localhost:5901 slicer@23.23.180.61
+or
+$ ssh -C -L 5900:localhost:5901 slicer@ec2-184-73-137-1.compute-1.amazonaws.com
+
+nohup Xvfb :1 -screen 0 1280x1024x16 &
+xterm -display :1 &
+
+nohup x11vnc -display :1 -usepw -N -localhost -forever &
+
+gnome-session --display :1 >& /dev/null &
+
+
+=================
+Then use 
+
+> vncviewer localhost:0
+
+to connect.
+
+
+=================
+Mounting the /extra filesystem
+
+> sudo mount /dev/xvdf /extra
+(though the AWS console says the volume name is /dev/sdf)
