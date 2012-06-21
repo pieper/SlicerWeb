@@ -42,17 +42,19 @@ var touchView = function(options) {
         // TOUCH events
         //
         onTouchStart: function(event) {
-            // TODO: different behaviors based on multitouch
             $.each(event.touches, function(i, touch) {
             });
-            self.startX = (1. * event.touches[0].pageX);
-            self.startY = (1. * event.touches[0].pageY);
             if (event.touches.length == 1) {
+              self.startX = (1. * event.touches[0].pageX);
+              self.startY = (1. * event.touches[0].pageY);
               self.requestAndRender({mode: 'start'});
             } else {
+              self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
+              self.startX = (event.touches[0].pageY + event.touches[1].pageY)/2.;
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
               self.startDist = Math.sqrt( dx*dx + dy*dy );
+              self.startZoom = self.zoom;
             }
             event.preventDefault();
         },
@@ -75,7 +77,7 @@ var touchView = function(options) {
                 }
               }
             } else {
-              // multitouch (only look at first 2)
+              // multitouch (only look at first 2 touch points)
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
               pan = {x: (nowX - self.startX), y: (nowY - self.startY)};
@@ -84,10 +86,10 @@ var touchView = function(options) {
               dy = event.touches[0].pageY - event.touches[1].pageY;
               nowDist = Math.sqrt( dx*dx + dy*dy );
 
-              strain = Math.abs(nowDist - self.startDist)/self.startDist;
+              self.zoom = self.startZoom * nowDist / self.startDist;
 
               zoomCenter = {x: nowX, y: nowY};
-              panZoom = {pan: pan, zoom: 1+strain, zoomCenter: zoomCenter};
+              panZoom = {pan: pan, zoom: self.zoom, zoomCenter: zoomCenter};
               self.setPanZoom(panZoom);
               self.render();
               if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -100,7 +102,11 @@ var touchView = function(options) {
         },
 
         onTouchEnd: function(event) {
-            //self.requestAndRender({force: true});
+            if (event.touches.length == 1) {
+              // single touch
+            } else {
+              // multitouch
+            }
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
               self.ganged_ViewControl.render();
@@ -168,30 +174,35 @@ var touchView = function(options) {
           if (typeof args.zoom === 'undefined') {
             args.zoom = 1;
           }
-
           z = args.zoom;
           x = args.zoomCenter.x;
           y = args.zoomCenter.y;
           px = args.pan.x;
           py = args.pan.y;
-          self.ctxt.setTransform( z,0, 0,z, -z*x+x+px,-z*y+y+py );
+          self.ctxt.setTransform( z,0, 0,z, -z*(x-px)+x,-z*(y-py)+y );
         },
 
         render: function(args) {
-            widthScale = self.ctxt.canvas.width / self.imageObj.width;
-            heightScale = self.ctxt.canvas.height / self.imageObj.height;
-            if (widthScale > heightScale) {
-              scale = heightScale;
-            } else {
-              scale = widthScale;
-            }
-            drawWidth = scale * self.imageObj.width;
-            drawHeight = scale * self.imageObj.height;
-            margin = (self.ctxt.canvas.width - drawWidth) / 2;
-            self.ctxt.save();
-            self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
-            self.ctxt.restore();
-            self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
+          if (self.requestingImage) {
+            // don't render incomplete imageObj - it will be white
+            // It will be rendered when load is completed (see onload)
+            return;
+          }
+          widthScale = self.ctxt.canvas.width / self.imageObj.width;
+          heightScale = self.ctxt.canvas.height / self.imageObj.height;
+          if (widthScale > heightScale) {
+            scale = heightScale;
+          } else {
+            scale = widthScale;
+          }
+          drawWidth = scale * self.imageObj.width;
+          drawHeight = scale * self.imageObj.height;
+          margin = (self.ctxt.canvas.width - drawWidth) / 2;
+          self.ctxt.save();
+          self.ctxt.setTransform( 1,0, 0,1, 0,0 );
+          self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
+          self.ctxt.restore();
+          self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
         },
 
         requestAndRender: function(args) {
@@ -199,13 +210,12 @@ var touchView = function(options) {
           force = typeof args.force !== 'undefined' ? args.force : false;
 
           self.imageObj.onload = function() {
+            self.requestingImage = false;
             self.render();
             if (self.nextImageSource != '') {
               self.requestingImage = true;
               self.imageObj.src = self.nextImageSource;
               self.nextImageSource = '';
-            } else {
-              self.requestingImage = false;
             }
           };
 
