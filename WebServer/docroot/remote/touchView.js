@@ -105,8 +105,8 @@ var touchView = function(options) {
               nowY -= self.canvas_offset.y;
 
               self.pan = {
-		x: (nowX - self.startX) + self.startPan.x,
-		y: (nowY - self.startY) + self.startPan.y
+		x: (nowX - self.startX) / self.startZoom + self.startPan.x,
+		y: (nowY - self.startY) / self.startZoom + self.startPan.y
 	      };
 
               dx = event.touches[0].pageX - event.touches[1].pageX;
