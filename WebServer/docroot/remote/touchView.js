@@ -43,7 +43,8 @@ var touchView = function(options) {
         //
         onTouchStart: function(event) {
             $.each(event.touches, function(i, touch) {
-	      $("#log").html().append( i + " :" this + "<br />" );
+	      str = $("#log").html();
+	      $("#log").html( str + "<br />" + i + " :" this );
             });
             if (event.touches.length == 1) {
               self.startX = (1. * event.touches[0].pageX);
