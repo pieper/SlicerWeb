@@ -15,6 +15,8 @@ var touchView = function(options) {
             self.pan = {x: 0, y: 0};
             self.imageObj = new Image();
 
+	    self.canvas_offset = options.canvas_offset;
+
             self.canvas.style.width = '100%'
             self.canvas.width = self.canvas.offsetWidth;
             self.canvas.style.width = '';
@@ -26,7 +28,6 @@ var touchView = function(options) {
               self.canvas.addEventListener('touchstart', self.onTouchStart, false);
               self.canvas.addEventListener('touchmove', self.onTouchMove, false);
               self.canvas.addEventListener('touchend', self.onTouchEnd, false);
-              self.canvas.addEventListener('tap', self.onTap, false);
             };
             self.canvas.addEventListener('mousedown', self.onMouseDown, false);
             self.canvas.addEventListener('mousemove', self.onMouseMove, false);
@@ -60,6 +61,10 @@ var touchView = function(options) {
             } else {
               self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               self.startY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
+
+              self.startX -= self.canvas_offset.x;
+              self.startY -= self.canvas_offset.y;
+
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
               self.startDist = Math.sqrt( dx*dx + dy*dy );
@@ -95,6 +100,9 @@ var touchView = function(options) {
               // multitouch (only look at first 2 touch points)
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
+
+              nowX -= self.canvas_offset.x;
+              nowY -= self.canvas_offset.y;
 
               self.pan = {
 		x: (nowX - self.startX) + self.startPan.x,
@@ -334,7 +342,8 @@ $(function(){
     containerID: "touchViewContainer",
     size: 'native',
     view: "Red",
-    doTouch: true
+    doTouch: true,
+    canvas_offset: { x: 0, y: 0}
   });
 
   touchViewControl_2 = new touchView( {
@@ -342,7 +351,8 @@ $(function(){
     containerID: "touchViewContainer_2",
     size: 'native',
     view: "Yellow",
-    doTouch: true
+    doTouch: true,
+    canvas_offset: { x: 512, y: 0}
   });
 
   touchViewControl.ganged_ViewControl = touchViewControl_2;
