@@ -75,7 +75,7 @@ var touchView = function(options) {
 		    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
             }
 
-	    $("#log").html( _log );
+	    // $("#log").html( _log );
             event.preventDefault();
         },
 
