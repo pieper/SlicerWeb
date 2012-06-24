@@ -43,15 +43,13 @@ var touchView = function(options) {
         //
         // TOUCH events
         //
-        onTap: function(event) {
-	    $("#log").html( "TAP" );
-	},
-
         onTouchStart: function(event) {
             $.each(event.touches, function(i, touch) {
             });
 
 	    _log =  "Start: " + event.touches.length + ", ";
+
+	    self.startTime = new Date().getTime();
 
             if (event.touches.length == 1) {
               self.startX = (1. * event.touches[0].pageX);
@@ -130,6 +128,15 @@ var touchView = function(options) {
             } else {
               // multitouch
             }
+	    endTime = new Date().getTime();
+	    if ((endTime - self.startTime) < 100) {
+	      self.zoom = 1;
+	      self.pan = {x: 0, y: 0};
+
+              zoomCenter = {x: 0, y: 0};
+              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+              self.setPanZoom(panZoom);
+	    }
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
               self.ganged_ViewControl.render();
