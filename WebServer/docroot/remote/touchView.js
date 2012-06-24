@@ -141,6 +141,7 @@ var touchView = function(options) {
 		self.ganged_ViewControl.setPanZoom(panZoom);
 	      }
 	    }
+
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
               self.ganged_ViewControl.render();
@@ -213,6 +214,11 @@ var touchView = function(options) {
           y = args.zoomCenter.y;
           px = args.pan.x;
           py = args.pan.y;
+
+	  self.zoom = args.zoom;
+	  self.pan.x = px;
+	  self.pan.y = py;
+
           self.ctxt.setTransform( z,0, 0,z, -z*(x-px)+x,-z*(y-py)+y );
         },
 
