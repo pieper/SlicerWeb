@@ -62,7 +62,7 @@ var touchView = function(options) {
               self.startZoom = self.zoom;
 
 	      _log +=  self.startX + ", " + self.startY + ", " +
-		      dx + ", " + dy + self.startDist + ", " self.startZoom;
+		    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
             }
 
 	    $("#log").html( _log );
