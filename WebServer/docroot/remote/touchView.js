@@ -43,21 +43,29 @@ var touchView = function(options) {
         //
         onTouchStart: function(event) {
             $.each(event.touches, function(i, touch) {
-	      str = $("#log").html();
-	      $("#log").html( str + "<br />" + i + " :" + this );
             });
+
+	    _log =  "Start: " + event.touches.length + ", ";
+
             if (event.touches.length == 1) {
               self.startX = (1. * event.touches[0].pageX);
               self.startY = (1. * event.touches[0].pageY);
               self.requestAndRender({mode: 'start'});
+
+	      _log +=  self.startX + ", " + self.startY;
             } else {
               self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
-              self.startX = (event.touches[0].pageY + event.touches[1].pageY)/2.;
+              self.startY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
               self.startDist = Math.sqrt( dx*dx + dy*dy );
               self.startZoom = self.zoom;
+
+	      _log +=  self.startX + ", " + self.startY + ", " +
+		      dx + ", " + dy + self.startDist + ", " self.startZoom;
             }
+
+	    $("#log").html( _log );
             event.preventDefault();
         },
 
