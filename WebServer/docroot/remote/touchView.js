@@ -136,6 +136,10 @@ var touchView = function(options) {
               zoomCenter = {x: 0, y: 0};
               panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
               self.setPanZoom(panZoom);
+
+	      if (typeof self.ganged_ViewControl !== 'undefined') {
+		self.ganged_ViewControl.setPanZoom(panZoom);
+	      }
 	    }
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
