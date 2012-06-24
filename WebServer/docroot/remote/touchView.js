@@ -53,12 +53,14 @@ var touchView = function(options) {
 	    self.startTime = new Date().getTime();
 
             if (event.touches.length == 1) {
+	      self.startMode = 1;
               self.startX = (1. * event.touches[0].pageX);
               self.startY = (1. * event.touches[0].pageY);
               self.requestAndRender({mode: 'start'});
 
 	      _log +=  self.startX + ", " + self.startY;
             } else {
+	      self.startMode = 2;
               self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               self.startY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
 
@@ -81,7 +83,7 @@ var touchView = function(options) {
 
         onTouchMove: function(event) {
 
-            if (event.touches.length == 1) {
+            if (self.startMode == 1) {
               // single touch
               deltaX = (event.touches[0].pageX - self.startX) / self.ctxt.canvas.width;
               deltaY = (event.touches[0].pageY - self.startY) / self.ctxt.canvas.height;
