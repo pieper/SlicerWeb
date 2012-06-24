@@ -26,6 +26,7 @@ var touchView = function(options) {
               self.canvas.addEventListener('touchstart', self.onTouchStart, false);
               self.canvas.addEventListener('touchmove', self.onTouchMove, false);
               self.canvas.addEventListener('touchend', self.onTouchEnd, false);
+              self.canvas.addEventListener('tap', self.onTap, false);
             };
             self.canvas.addEventListener('mousedown', self.onMouseDown, false);
             self.canvas.addEventListener('mousemove', self.onMouseMove, false);
@@ -42,6 +43,10 @@ var touchView = function(options) {
         //
         // TOUCH events
         //
+        onTap: function(event) {
+	    $("#log").html( "TAP" );
+	},
+
         onTouchStart: function(event) {
             $.each(event.touches, function(i, touch) {
             });
