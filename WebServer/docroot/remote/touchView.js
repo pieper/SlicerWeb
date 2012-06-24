@@ -12,6 +12,7 @@ var touchView = function(options) {
             self.container = document.getElementById(options.containerID);
 
             self.zoom = 1;
+            self.pan = {x: 0, y: 0};
             self.imageObj = new Image();
 
             self.canvas.style.width = '100%'
@@ -60,6 +61,7 @@ var touchView = function(options) {
               dy = event.touches[0].pageY - event.touches[1].pageY;
               self.startDist = Math.sqrt( dx*dx + dy*dy );
               self.startZoom = self.zoom;
+              self.startPan = self.pan;
 
 	      _log +=  self.startX + ", " + self.startY + ", " +
 		    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
@@ -90,7 +92,11 @@ var touchView = function(options) {
               // multitouch (only look at first 2 touch points)
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
-              pan = {x: (nowX - self.startX), y: (nowY - self.startY)};
+
+              self.pan = {
+		x: (nowX - self.startX) + self.startPan.x,
+		y: (nowY - self.startY) + self.startPan.y
+	      };
 
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
@@ -99,9 +105,11 @@ var touchView = function(options) {
               self.zoom = self.startZoom * nowDist / self.startDist;
 
               zoomCenter = {x: nowX, y: nowY};
-              panZoom = {pan: pan, zoom: self.zoom, zoomCenter: zoomCenter};
+              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+
               self.setPanZoom(panZoom);
               self.render();
+
               if (typeof self.ganged_ViewControl !== 'undefined') {
                 self.ganged_ViewControl.setPanZoom(panZoom);
                 self.ganged_ViewControl.render();
