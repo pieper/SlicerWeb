@@ -15,8 +15,6 @@ var touchView = function(options) {
             self.pan = {x: 0, y: 0};
             self.imageObj = new Image();
 
-	    self.canvas_offset = options.canvas_offset;
-
             self.canvas.style.width = '100%'
             self.canvas.width = self.canvas.offsetWidth;
             self.canvas.style.width = '';
@@ -48,24 +46,24 @@ var touchView = function(options) {
             $.each(event.touches, function(i, touch) {
             });
 
-	    _log =  "Start: " + event.touches.length + ", ";
+            _log =  "Start: " + event.touches.length + ", ";
 
-	    self.startTime = new Date().getTime();
+            self.startTime = new Date().getTime();
 
             if (event.touches.length == 1) {
-	      self.startMode = 1;
+              self.startMode = 1;
               self.startX = (1. * event.touches[0].pageX);
               self.startY = (1. * event.touches[0].pageY);
               self.requestAndRender({mode: 'start'});
 
-	      _log +=  self.startX + ", " + self.startY;
+              _log +=  self.startX + ", " + self.startY;
             } else {
-	      self.startMode = 2;
+              self.startMode = 2;
               self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               self.startY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
 
-              self.startX -= self.canvas_offset.x;
-              self.startY -= self.canvas_offset.y;
+              self.startX -= self.canvas.offsetLeft;
+              self.startY -= self.canvas.offsetTop;
 
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
@@ -73,11 +71,11 @@ var touchView = function(options) {
               self.startZoom = self.zoom;
               self.startPan = self.pan;
 
-	      _log +=  self.startX + ", " + self.startY + ", " +
-		    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
+              _log +=  self.startX + ", " + self.startY + ", " +
+                    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
             }
 
-	    // $("#log").html( _log );
+            $("#log").html( _log );
             event.preventDefault();
         },
 
@@ -103,13 +101,19 @@ var touchView = function(options) {
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
 
-              nowX -= self.canvas_offset.x;
-              nowY -= self.canvas_offset.y;
+              nowX -= self.canvas.offsetLeft;
+              nowY -= self.canvas.offsetTop;
+
+              zoomCenter = {
+                            x: ((self.startX*self.startZoom)-self.startPan.x)/self.startZoom,
+                            y: ((self.startY*self.startZoom)-self.startPan.y)/self.startZoom
+              };
+              //zoomCenter = {x: self.startX, y: self.startY};
 
               self.pan = {
-		x: (nowX - self.startX) + self.startPan.x,
-		y: (nowY - self.startY) + self.startPan.y
-	      };
+                x: (nowX - self.startX) + self.startPan.x,
+                y: (nowY - self.startY) + self.startPan.y
+              };
 
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
@@ -117,7 +121,6 @@ var touchView = function(options) {
 
               self.zoom = self.startZoom * nowDist / self.startDist;
 
-              zoomCenter = {x: nowX, y: nowY};
               panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
 
               self.setPanZoom(panZoom);
@@ -138,19 +141,20 @@ var touchView = function(options) {
             } else {
               // multitouch
             }
-	    endTime = new Date().getTime();
-	    if ((endTime - self.startTime) < 100) {
-	      self.zoom = 1;
-	      self.pan = {x: 0, y: 0};
+            endTime = new Date().getTime();
+            if ((endTime - self.startTime) < 100) {
+              self.zoom = 1;
+              self.pan = {x: 0, y: 0};
 
               zoomCenter = {x: 0, y: 0};
               panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
               self.setPanZoom(panZoom);
 
-	      if (typeof self.ganged_ViewControl !== 'undefined') {
-		self.ganged_ViewControl.setPanZoom(panZoom);
-	      }
-	    }
+
+              if (typeof self.ganged_ViewControl !== 'undefined') {
+                self.ganged_ViewControl.setPanZoom(panZoom);
+              }
+            }
 
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -225,11 +229,18 @@ var touchView = function(options) {
           px = args.pan.x;
           py = args.pan.y;
 
-	  self.zoom = args.zoom;
-	  self.pan.x = px;
-	  self.pan.y = py;
+          self.zoom = args.zoom;
+          self.pan.x = px;
+          self.pan.y = py;
 
-          self.ctxt.setTransform( z,0, 0,z, -z*(x-px)+x,-z*(y-py)+y );
+          self.ctxt.setTransform( 1,0, 0,1, 0,0 );
+          self.ctxt.translate(px,py);
+          self.ctxt.translate(x,y);
+          self.ctxt.scale(z,z);
+          self.ctxt.translate(-x,-y);
+
+          //self.ctxt.setTransform( z,0, 0,z, -z*(x-px)+x,-z*(y-py)+y );
+          //self.ctxt.setTransform( 1,0, 0,1, px,py );
         },
 
         render: function(args) {
@@ -252,7 +263,8 @@ var touchView = function(options) {
           self.ctxt.setTransform( 1,0, 0,1, 0,0 );
           self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
           self.ctxt.restore();
-          self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
+          //self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
+          self.ctxt.drawImage( self.imageObj, 0, 0, self.imageObj.width, self.imageObj.height );
         },
 
         requestAndRender: function(args) {
@@ -344,8 +356,7 @@ $(function(){
     containerID: "touchViewContainer",
     size: 'native',
     view: "Red",
-    doTouch: true,
-    canvas_offset: { x: 0, y: 0}
+    doTouch: true
   });
 
   touchViewControl_2 = new touchView( {
@@ -353,8 +364,7 @@ $(function(){
     containerID: "touchViewContainer_2",
     size: 'native',
     view: "Yellow",
-    doTouch: true,
-    canvas_offset: { x: 512, y: 0}
+    doTouch: true
   });
 
   touchViewControl.ganged_ViewControl = touchViewControl_2;
