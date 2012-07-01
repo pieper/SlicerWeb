@@ -13,6 +13,8 @@ var touchView = function(options) {
 
             self.zoom = 1;
             self.pan = {x: 0, y: 0};
+	    self.zoomCenter = {x: 0, y: 0};
+
             self.imageObj = new Image();
 
             self.canvas.style.width = '100%'
@@ -71,6 +73,14 @@ var touchView = function(options) {
               self.startZoom = self.zoom;
               self.startPan = self.pan;
 
+	      prev_ZC_x = self.zoomCenter.x;
+	      prev_ZC_y = self.zoomCenter.y;
+
+	      self.zoomCenter = {
+		x: (self.startX + (self.startZoom * prev_ZC_x) - prev_ZC_x - self.startPan.x ) / self.startZoom,
+		x: (self.startY + (self.startZoom * prev_ZC_y) - prev_ZC_y - self.startPan.y ) / self.startZoom
+              };
+
 	      _log +=  self.startX + ", " + self.startY + ", " +
 		    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
             }
@@ -115,13 +125,7 @@ var touchView = function(options) {
 
               self.zoom = self.startZoom * nowDist / self.startDist;
 
-              // zoomCenter = {x: self.startX, y: self.startY};
-	      zoomCenter = {
-		x: ((self.startX*self.startZoom)-self.startPan.x)/(1 - self.startZoom),
-		y: ((self.startY*self.startZoom)-self.startPan.y)/(1 - self.startZoom)
-              };
-	      
-	      panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+	      panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: self.zoomCenter};
 
               self.setPanZoom(panZoom);
               self.render();
@@ -146,8 +150,8 @@ var touchView = function(options) {
 	      self.zoom = 1;
 	      self.pan = {x: 0, y: 0};
 
-              zoomCenter = {x: 0, y: 0};
-              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+              self.zoomCenter = {x: 0, y: 0};
+              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: self.zoomCenter};
               self.setPanZoom(panZoom);
 
 	      if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -228,7 +232,10 @@ var touchView = function(options) {
           px = args.pan.x;
           py = args.pan.y;
 
+	  // set attributes for "ganged" viewControl
 	  self.zoom = args.zoom;
+	  self.zoomCenter.x = args.zoomCenter.x;
+	  self.zoomCenter.y = args.zoomCenter.y;
 	  self.pan.x = px;
 	  self.pan.y = py;
 
