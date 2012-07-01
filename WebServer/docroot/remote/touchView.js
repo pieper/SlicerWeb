@@ -252,7 +252,7 @@ var touchView = function(options) {
           self.ctxt.setTransform( 1,0, 0,1, 0,0 );
           self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
           self.ctxt.restore();
-          self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
+          self.ctxt.drawImage( self.imageObj, /* margin */ 0, 0, drawWidth, drawHeight );
         },
 
         requestAndRender: function(args) {
