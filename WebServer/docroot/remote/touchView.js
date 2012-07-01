@@ -229,7 +229,7 @@ var touchView = function(options) {
 	  self.pan.x = px;
 	  self.pan.y = py;
 
-          self.ctxt.setTransform( z,0, 0,z, -z*(x-px)+x,-z*(y-py)+y );
+          self.ctxt.setTransform( z,0, 0,z, -z*(x)+x+px,-z*(y)+y+py );
         },
 
         render: function(args) {
