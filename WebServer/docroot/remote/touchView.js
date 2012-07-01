@@ -78,7 +78,7 @@ var touchView = function(options) {
 
 	      self.zoomCenter = {
 		x: (self.startX + (self.startZoom * prev_ZC_x) - prev_ZC_x - self.startPan.x ) / self.startZoom,
-		x: (self.startY + (self.startZoom * prev_ZC_y) - prev_ZC_y - self.startPan.y ) / self.startZoom
+		y: (self.startY + (self.startZoom * prev_ZC_y) - prev_ZC_y - self.startPan.y ) / self.startZoom
               };
 
 	      _log +=  self.startX + ", " + self.startY + ", " +
@@ -149,8 +149,8 @@ var touchView = function(options) {
 	    if ((endTime - self.startTime) < 100) {
 	      self.zoom = 1;
 	      self.pan = {x: 0, y: 0};
-
               self.zoomCenter = {x: 0, y: 0};
+
               panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: self.zoomCenter};
               self.setPanZoom(panZoom);
 
