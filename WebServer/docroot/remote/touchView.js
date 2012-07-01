@@ -13,6 +13,8 @@ var touchView = function(options) {
 
             self.zoom = 1;
             self.pan = {x: 0, y: 0};
+	    self.zoomCenter = {x: 0, y: 0};
+
             self.imageObj = new Image();
 
             self.canvas.style.width = '100%'
@@ -46,19 +48,19 @@ var touchView = function(options) {
             $.each(event.touches, function(i, touch) {
             });
 
-            _log =  "Start: " + event.touches.length + ", ";
+	    _log =  "Start: " + event.touches.length + ", ";
 
-            self.startTime = new Date().getTime();
+	    self.startTime = new Date().getTime();
 
             if (event.touches.length == 1) {
-              self.startMode = 1;
+	      self.startMode = 1;
               self.startX = (1. * event.touches[0].pageX);
               self.startY = (1. * event.touches[0].pageY);
               self.requestAndRender({mode: 'start'});
 
-              _log +=  self.startX + ", " + self.startY;
+	      _log +=  self.startX + ", " + self.startY;
             } else {
-              self.startMode = 2;
+	      self.startMode = 2;
               self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               self.startY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
 
@@ -71,11 +73,19 @@ var touchView = function(options) {
               self.startZoom = self.zoom;
               self.startPan = self.pan;
 
-              _log +=  self.startX + ", " + self.startY + ", " +
-                    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
+	      prev_ZC_x = self.zoomCenter.x;
+	      prev_ZC_y = self.zoomCenter.y;
+
+	      self.zoomCenter = {
+		x: (self.startX + (self.startZoom * prev_ZC_x) - prev_ZC_x - self.startPan.x ) / self.startZoom,
+		y: (self.startY + (self.startZoom * prev_ZC_y) - prev_ZC_y - self.startPan.y ) / self.startZoom
+              };
+
+	      _log +=  self.startX + ", " + self.startY + ", " +
+		    dx + ", " + dy + ", " + self.startDist + ", " + self.startZoom;
             }
 
-            $("#log").html( _log );
+	    // $("#log").html( _log );
             event.preventDefault();
         },
 
@@ -104,16 +114,10 @@ var touchView = function(options) {
               nowX -= self.canvas.offsetLeft;
               nowY -= self.canvas.offsetTop;
 
-              zoomCenter = {
-                            x: ((self.startX*self.startZoom)-self.startPan.x)/self.startZoom,
-                            y: ((self.startY*self.startZoom)-self.startPan.y)/self.startZoom
-              };
-              //zoomCenter = {x: self.startX, y: self.startY};
-
               self.pan = {
-                x: (nowX - self.startX) + self.startPan.x,
-                y: (nowY - self.startY) + self.startPan.y
-              };
+		x: (nowX - self.startX) + self.startPan.x,
+		y: (nowY - self.startY) + self.startPan.y
+	      };
 
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
@@ -121,7 +125,7 @@ var touchView = function(options) {
 
               self.zoom = self.startZoom * nowDist / self.startDist;
 
-              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+	      panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: self.zoomCenter};
 
               self.setPanZoom(panZoom);
               self.render();
@@ -141,20 +145,19 @@ var touchView = function(options) {
             } else {
               // multitouch
             }
-            endTime = new Date().getTime();
-            if ((endTime - self.startTime) < 100) {
-              self.zoom = 1;
-              self.pan = {x: 0, y: 0};
+	    endTime = new Date().getTime();
+	    if ((endTime - self.startTime) < 100) {
+	      self.zoom = 1;
+	      self.pan = {x: 0, y: 0};
+              self.zoomCenter = {x: 0, y: 0};
 
-              zoomCenter = {x: 0, y: 0};
-              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: self.zoomCenter};
               self.setPanZoom(panZoom);
 
-
-              if (typeof self.ganged_ViewControl !== 'undefined') {
-                self.ganged_ViewControl.setPanZoom(panZoom);
-              }
-            }
+	      if (typeof self.ganged_ViewControl !== 'undefined') {
+		self.ganged_ViewControl.setPanZoom(panZoom);
+	      }
+	    }
 
             self.render();
             if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -229,18 +232,14 @@ var touchView = function(options) {
           px = args.pan.x;
           py = args.pan.y;
 
-          self.zoom = args.zoom;
-          self.pan.x = px;
-          self.pan.y = py;
+	  // set attributes for "ganged" viewControl
+	  self.zoom = args.zoom;
+	  self.zoomCenter.x = args.zoomCenter.x;
+	  self.zoomCenter.y = args.zoomCenter.y;
+	  self.pan.x = px;
+	  self.pan.y = py;
 
-          self.ctxt.setTransform( 1,0, 0,1, 0,0 );
-          self.ctxt.translate(px,py);
-          self.ctxt.translate(x,y);
-          self.ctxt.scale(z,z);
-          self.ctxt.translate(-x,-y);
-
-          //self.ctxt.setTransform( z,0, 0,z, -z*(x-px)+x,-z*(y-py)+y );
-          //self.ctxt.setTransform( 1,0, 0,1, px,py );
+          self.ctxt.setTransform( z,0, 0,z, -z*(x)+x+px,-z*(y)+y+py );
         },
 
         render: function(args) {
@@ -263,8 +262,7 @@ var touchView = function(options) {
           self.ctxt.setTransform( 1,0, 0,1, 0,0 );
           self.ctxt.clearRect( 0, 0, self.ctxt.canvas.width, self.ctxt.canvas.height );
           self.ctxt.restore();
-          //self.ctxt.drawImage( self.imageObj, margin, 0, drawWidth, drawHeight );
-          self.ctxt.drawImage( self.imageObj, 0, 0, self.imageObj.width, self.imageObj.height );
+          self.ctxt.drawImage( self.imageObj, /* margin */ 0, 0, drawWidth, drawHeight );
         },
 
         requestAndRender: function(args) {
