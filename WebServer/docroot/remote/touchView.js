@@ -115,8 +115,13 @@ var touchView = function(options) {
 
               self.zoom = self.startZoom * nowDist / self.startDist;
 
-              zoomCenter = {x: self.startX, y: self.startY};
-              panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
+              // zoomCenter = {x: self.startX, y: self.startY};
+	      zoomCenter = {
+		x: ((self.startX*self.startZoom)-self.startPan.x)/(1 - self.startZoom),
+		y: ((self.startY*self.startZoom)-self.startPan.y)/(1 - self.startZoom)
+              };
+	      
+	      panZoom = {pan: self.pan, zoom: self.zoom, zoomCenter: zoomCenter};
 
               self.setPanZoom(panZoom);
               self.render();
