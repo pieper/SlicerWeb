@@ -15,8 +15,6 @@ var touchView = function(options) {
             self.pan = {x: 0, y: 0};
             self.imageObj = new Image();
 
-	    self.canvas_offset = options.canvas_offset;
-
             self.canvas.style.width = '100%'
             self.canvas.width = self.canvas.offsetWidth;
             self.canvas.style.width = '';
@@ -64,8 +62,8 @@ var touchView = function(options) {
               self.startX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               self.startY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
 
-              self.startX -= self.canvas_offset.x;
-              self.startY -= self.canvas_offset.y;
+              self.startX -= self.canvas.offsetLeft;
+	      self.startY -= self.canvas.offsetTop;
 
               dx = event.touches[0].pageX - event.touches[1].pageX;
               dy = event.touches[0].pageY - event.touches[1].pageY;
@@ -103,8 +101,8 @@ var touchView = function(options) {
               nowX = (event.touches[0].pageX + event.touches[1].pageX)/2.;
               nowY = (event.touches[0].pageY + event.touches[1].pageY)/2.;
 
-              nowX -= self.canvas_offset.x;
-              nowY -= self.canvas_offset.y;
+              nowX -= self.canvas.offsetLeft;
+              nowY -= self.canvas.offsetTop;
 
               self.pan = {
 		x: (nowX - self.startX) + self.startPan.x,
@@ -345,7 +343,6 @@ $(function(){
     size: 'native',
     view: "Red",
     doTouch: true,
-    canvas_offset: { x: 0, y: 0}
   });
 
   touchViewControl_2 = new touchView( {
@@ -354,7 +351,6 @@ $(function(){
     size: 'native',
     view: "Yellow",
     doTouch: true,
-    canvas_offset: { x: 512, y: 0}
   });
 
   touchViewControl.ganged_ViewControl = touchViewControl_2;
