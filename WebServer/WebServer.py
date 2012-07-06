@@ -569,7 +569,13 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       otherSliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % copySliceGeometryFrom.capitalize() )
       otherSliceNode = otherSliceLogic.GetSliceNode()
       sliceNode = sliceLogic.GetSliceNode()
+      # technique from vtkMRMLSliceLinkLogic (TODO: should be exposed as method)
       sliceNode.GetSliceToRAS().DeepCopy( otherSliceNode.GetSliceToRAS() )
+      fov = sliceNode.GetFieldOfView()
+      otherFOV = otherSliceNode.GetFieldOfView()
+      sliceNode.SetFieldOfView( otherFOV[0],
+                                otherFOV[0] * fov[1] / fov[0],
+                                fov[2] );
 
     if orientation:
       sliceNode = sliceLogic.GetSliceNode()
