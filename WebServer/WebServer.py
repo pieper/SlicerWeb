@@ -541,6 +541,10 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     except (KeyError, ValueError):
       offset = None
     try:
+      copySliceGeometryFrom = q['copySliceGeometryFrom'][0].strip()
+    except (KeyError, ValueError):
+      copySliceGeometryFrom = None
+    try:
       scrollTo = float(q['scrollTo'][0].strip())
     except (KeyError, ValueError):
       scrollTo = None
@@ -561,6 +565,12 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     if offset:
       currentOffset = sliceLogic.GetSliceOffset()
       sliceLogic.SetSliceOffset(currentOffset + offset)
+    if copySliceGeometryFrom:
+      otherSliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % copySliceGeometryFrom.capitalize() )
+      otherSliceNode = otherSliceLogic.GetSliceNode()
+      sliceNode = sliceLogic.GetSliceNode()
+      sliceNode.GetSliceToRAS().DeepCopy( otherSliceNode.GetSliceToRAS() )
+
     if orientation:
       sliceNode = sliceLogic.GetSliceNode()
       if orientation.lower() == 'axial':

@@ -37,6 +37,7 @@ var touchView = function(options) {
             self.nextImageSource = "";
             self.requestingImage = false;
 
+            self.view = options.view;
             self.view_color =
                 typeof options.view !== 'undefined' ? options.view : "";
         },
@@ -103,7 +104,7 @@ var touchView = function(options) {
                 self.requestAndRender({scrollTo: scrollTo, size: 'native'});
 
                 if (typeof self.ganged_ViewControl !== 'undefined') {
-                  self.ganged_ViewControl.requestAndRender({scrollTo: scrollTo, size: 'native'});
+                  self.ganged_ViewControl.requestAndRender({copySliceGeometryFrom: self.view, size: 'native'});
                 }
               }
             } else {
@@ -296,6 +297,9 @@ var touchView = function(options) {
             }
             if (typeof args.scrollTo !== 'undefined') {
               src += "&scrollTo=" + args.scrollTo;
+            }
+            if (typeof args.copySliceGeometryFrom !== 'undefined') {
+              src += "&copySliceGeometryFrom=" + args.copySliceGeometryFrom;
             }
           }
 
