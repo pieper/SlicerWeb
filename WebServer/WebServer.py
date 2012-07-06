@@ -66,6 +66,7 @@ class WebServerWidget:
 
     # reload button
     self.reloadButton = qt.QPushButton("Reload")
+    self.reloadButton.name = "WebServer Reload"
     self.reloadButton.toolTip = "Reload this module."
     self.layout.addWidget(self.reloadButton)
     self.reloadButton.connect('clicked(bool)', self.onReload)
@@ -110,7 +111,23 @@ class WebServerWidget:
     globals()[mod] = imp.load_module(mod, fp, filePath, ('.py', 'r', imp.PY_SOURCE))
     fp.close()
 
-    globals()['web'] = web = globals()[mod].WebServerWidget()
+    # rebuild the widget
+    # - find and hide the existing widget
+    # - remove all the layout items
+    # - create a new widget in the existing parent
+    parent = slicer.util.findChildren(name='WebServer Reload')[0].parent()
+    for child in parent.children():
+      try:
+        child.hide()
+      except AttributeError:
+        pass
+    item = parent.layout().itemAt(0)
+    while item:
+      parent.layout().removeItem(item)
+      item = parent.layout().itemAt(0)
+
+    globals()['web'] = web = globals()[mod].WebServerWidget(parent)
+    web.setup()
 
     web.logic.start()
 
@@ -298,6 +315,34 @@ class WebServerLogic:
       else:
         tumor1 = slicer.util.getNode('MRBrainTumor1')
         tumor2 = slicer.util.getNode('MRBrainTumor2')
+      # set up the display in the default configuration
+      layoutManager = slicer.app.layoutManager()
+      redComposite = layoutManager.sliceWidget('Red').mrmlSliceCompositeNode()
+      yellowComposite = layoutManager.sliceWidget('Yellow').mrmlSliceCompositeNode()
+      redComposite.SetBackgroundVolumeID( tumor1.GetID() )
+      yellowComposite.SetBackgroundVolumeID( tumor2.GetID() )
+      yellowSlice = layoutManager.sliceWidget('Yellow').mrmlSliceNode()
+      yellowSlice.SetOrientationToAxial()
+      redSlice = layoutManager.sliceWidget('Red').mrmlSliceNode()
+      redSlice.SetOrientationToAxial()
+      tumor1Display = tumor1.GetDisplayNode()
+      tumor2Display = tumor2.GetDisplayNode()
+      tumor2Display.SetAutoWindowLevel(0)
+      tumor2Display.SetWindow(tumor1Display.GetWindow())
+      tumor2Display.SetLevel(tumor1Display.GetLevel())
+      applicationLogic = slicer.app.applicationLogic()
+      applicationLogic.FitSliceToAll()
+      return ( json.dumps([tumor1.GetName(), tumor2.GetName()]) )
+    if id == 'amigo-2012-07-02':
+      #
+      # first, get the data
+      #
+      if not slicer.util.getNodes('ID_1'):
+        tumor1 = slicer.util.loadVolume('/Users/pieper/data/2July2012/bl-data1/ID_1.nrrd')
+        tumor2 = slicer.util.loadVolume('/Users/pieper/data/2July2012/bl-data2/ID_6.nrrd')
+      else:
+        tumor1 = slicer.util.getNode('ID_1')
+        tumor2 = slicer.util.getNode('ID_6')
       # set up the display in the default configuration
       layoutManager = slicer.app.layoutManager()
       redComposite = layoutManager.sliceWidget('Red').mrmlSliceCompositeNode()
