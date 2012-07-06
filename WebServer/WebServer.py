@@ -347,18 +347,12 @@ class WebServerLogic:
       layoutManager = slicer.app.layoutManager()
       redComposite = layoutManager.sliceWidget('Red').mrmlSliceCompositeNode()
       yellowComposite = layoutManager.sliceWidget('Yellow').mrmlSliceCompositeNode()
-      redComposite.SetBackgroundVolumeID( tumor1.GetID() )
-      yellowComposite.SetBackgroundVolumeID( tumor2.GetID() )
       yellowSlice = layoutManager.sliceWidget('Yellow').mrmlSliceNode()
       yellowSlice.SetOrientationToAxial()
       redSlice = layoutManager.sliceWidget('Red').mrmlSliceNode()
       redSlice.SetOrientationToAxial()
-      tumor1Display = tumor1.GetDisplayNode()
-      tumor2Display = tumor2.GetDisplayNode()
-      tumor2Display.SetAutoWindowLevel(0)
-      tumor2Display.SetWindow(tumor1Display.GetWindow())
-      tumor2Display.SetLevel(tumor1Display.GetLevel())
-      applicationLogic = slicer.app.applicationLogic()
+      redComposite.SetBackgroundVolumeID( tumor1.GetID() )
+      yellowComposite.SetBackgroundVolumeID( tumor2.GetID() )
       applicationLogic.FitSliceToAll()
       return ( json.dumps([tumor1.GetName(), tumor2.GetName()]) )
     elif id == 'default':
@@ -537,6 +531,10 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       view = 'red'
     sliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % view.capitalize() )
     try:
+      mode = str(q['mode'][0].strip())
+    except (KeyError, ValueError):
+      mode = None
+    try:
       offset = float(q['offset'][0].strip())
     except (KeyError, ValueError):
       offset = None
@@ -557,14 +555,18 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     except (KeyError, ValueError):
       orientation = None
 
+    offsetKey = 'offset.'+view
+    if mode == 'start' or not self.interactionState.has_key(offsetKey):
+      self.interactionState[offsetKey] = sliceLogic.GetSliceOffset()
+
     if scrollTo:
       volumeNode = sliceLogic.GetBackgroundLayer().GetVolumeNode()
       bounds = [0,] * 6
       sliceLogic.GetVolumeSliceBounds(volumeNode,bounds)
       sliceLogic.SetSliceOffset(bounds[4] + (scrollTo * (bounds[5] - bounds[4])))
     if offset:
-      currentOffset = sliceLogic.GetSliceOffset()
-      sliceLogic.SetSliceOffset(currentOffset + offset)
+      startOffset = self.interactionState[offsetKey]
+      sliceLogic.SetSliceOffset(startOffset + offset)
     if copySliceGeometryFrom:
       otherSliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % copySliceGeometryFrom.capitalize() )
       otherSliceNode = otherSliceLogic.GetSliceNode()

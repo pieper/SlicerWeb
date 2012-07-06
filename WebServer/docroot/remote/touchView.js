@@ -100,8 +100,16 @@ var touchView = function(options) {
               if ( selection == 'ThreeD' ) {
                 self.requestAndRender({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
               } else {
-                scrollTo = (1. * event.touches[0].pageY) / self.ctxt.canvas.height;
-                self.requestAndRender({scrollTo: scrollTo, size: 'native'});
+                if ( false ) {
+                  // scrollTo mode
+                  scrollTo = (1. * event.touches[0].pageY) / self.ctxt.canvas.height;
+                  scrollTo = scrollTo.toFixed(2);
+                  self.requestAndRender({scrollTo: scrollTo, size: 'native'});
+                } else {
+                  // offset mode
+                  offset = 30 * deltaY;
+                  self.requestAndRender({offset: offset, size: 'native'});
+                }
 
                 if (typeof self.ganged_ViewControl !== 'undefined') {
                   self.ganged_ViewControl.requestAndRender({copySliceGeometryFrom: self.view, size: 'native'});
@@ -187,6 +195,7 @@ var touchView = function(options) {
                 self.requestAndRender({mode: 'drag', orbitX: deltaX, orbitY: deltaY});
               } else {
                 scrollTo = (1. * event.offsetY) / self.ctxt.canvas.height;
+                scrollTo = scrollTo.toFixed(2);
                 self.requestAndRender({scrollTo: scrollTo, size: 'native'});
 
                 if (typeof self.ganged_ViewControl !== 'undefined') {
@@ -266,19 +275,20 @@ var touchView = function(options) {
           self.ctxt.drawImage( self.imageObj, /* margin */ 0, 0, drawWidth, drawHeight );
         },
 
+        onLoaded: function() {
+          self.requestingImage = false;
+          self.render();
+          if (self.nextImageSource != '') {
+            self.requestingImage = true;
+            self.imageObj.src = self.nextImageSource;
+            self.nextImageSource = '';
+          }
+        },
+
         requestAndRender: function(args) {
           args = typeof args !== 'undefined' ? args : {};
           force = typeof args.force !== 'undefined' ? args.force : false;
 
-          self.imageObj.onload = function() {
-            self.requestingImage = false;
-            self.render();
-            if (self.nextImageSource != '') {
-              self.requestingImage = true;
-              self.imageObj.src = self.nextImageSource;
-              self.nextImageSource = '';
-            }
-          };
 
           var time = (new Date()).getTime();
           selection = $('#sliceModeBar').data('selected');
@@ -336,8 +346,9 @@ var touchView = function(options) {
           }
           if ( !self.requestingImage ) {
             self.requestingImage = true;
-            self.imageObj.src = src;
             self.nextImageSource = '';
+            self.imageObj.onload = self.onLoaded;
+            self.imageObj.src = src;
           } else {
             self.nextImageSource = src;
           }
@@ -374,6 +385,7 @@ $(function(){
 
   $.get('slicer/preset?id=amigo-2012-07-02', function(data){
     touchViewControl.requestAndRender();
-    touchViewControl_2.requestAndRender();
+    touchViewControl_2.requestAndRender(
+                        {copySliceGeometryFrom: touchViewControl.view});
   });
 });
