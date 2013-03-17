@@ -5,16 +5,28 @@ import sys
 import select
 import urlparse
 import urllib
-import subprocess
 import json
 try:
     import cStringIO as StringIO
 except ImportError:
     import StringIO
 
+import string,time
+import socket
+
+from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
+from SimpleHTTPServer import SimpleHTTPRequestHandler
+from urlparse import urlparse
+
 import numpy
 
-import PIL
+# Note: this needs to be installed in slicer's python
+# in order for any of the image operations to work
+hasImage = True
+try:
+  from PIL import Image
+except ImportError:
+  hasImage = False
 
 #
 # WebServer
@@ -145,106 +157,144 @@ class WebServerWidget:
       slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
 
 #
-# WebServer logic
+# SlicerRequestHandler
 #
 
-class WebServerLogic:
-  """This class runs inside slicer itself and 
-  communitates with the server via stdio.  A QTimer 
-  is used to periodically check the read pipe for content
-  # TODO: integrate stdio pipes into Qt event loop
-  Likely approach: 
-    Subclass CherryPyWSGIServer and override the tick() method
-    Get the sockect member and call fileno() on it.
-    Create a QTcpServer and call setSocketDescriptor.
-    Then observe newConnection signals and call a skeleton tick
-    which will accept the connection and send it to a thread.
-    Need to be careful that slicer code (Qt, VTK, etc is not
-    modified from multiple server threads.
-  """
-  def __init__(self, logMessage=None):
-    if logMessage:
-      self.logMessage = logMessage
-    self.interactionState = {}
-    self.interval = 20
-    self.process = None
-    self.pythonPath = slicer.app.slicerHome +"/bin/python"
-    if not os.path.exists(self.pythonPath) or os.path.isdir(self.pythonPath):
-      self.pythonPath = slicer.app.slicerHome +"/../python-build/bin/python"
-    if not os.path.exists(self.pythonPath):
-      self.logMessage ("Cannot find python executable cannot start server")
-      return
 
-    moduleDirectory = os.path.dirname(slicer.modules.webserver.path)
-    self.docroot = moduleDirectory + "/docroot"
-    self.serverHelperPath = moduleDirectory + "/Helper/ServerHelper.py"
-    self.timer = qt.QTimer()
+class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
-  def logMessage(self,*args):
-    for arg in args:
-      print(arg)
+  def start_response(self, status, response_headers):
+    self.send_response(status)
+    for keyword,value in response_headers:
+      self.send_header(keyword, value)
+    self.end_headers()
 
-  def start(self):
-    """Create the subprocess and set up a polling timer"""
-    if self.process:
-      self.stop()
-    self.logMessage("running:", self.pythonPath, self.serverHelperPath, self.docroot)
-    self.process = subprocess.Popen([self.pythonPath, self.serverHelperPath, self.docroot],
-                                      bufsize=-1,
-                                      stdin=subprocess.PIPE,
-                                      stdout=subprocess.PIPE,
-                                      stderr=subprocess.PIPE)
-    # call the tick method every so often
-    self.timer.setInterval(self.interval)
-    self.timer.connect('timeout()', self.tick)
-    self.timer.start()
-    self.logMessage('Timer started...')
+  def logMessage(self, message):
+     self.server.logMessage(message)
 
-  def stop(self):
-    self.timer.stop()
-    if self.process:
-      self.process.kill()
-      self.process = None
 
-  def tick(self):
-    """Check to see if there's anything to do"""
+  def do_GET(self):
+    self.protocol_version = 'HTTP/1.1'
+    try:
+      status = 200
+      rest = self.path
+      self.logMessage("Handling: " + rest)
 
-    # first, clear stderr
-    inputs = [self.process.stderr]
-    outputs = []
-    readable,writable,exceptional = select.select(inputs, outputs, inputs, 0)
-    if readable.__contains__(self.process.stderr):
-      error = self.process.stderr.readline()
-      if error:
-        print ("stderr: %s" % error)
-      
-    # now check stdin to see if there is work to do
-    inputs = [self.process.stdout]
-    outputs = []
-    readable,writable,exceptional = select.select(inputs, outputs, inputs, 0)
-    if readable.__contains__(self.process.stdout):
-      # the subprocss is has something to say, read it and respond
-      cmd = self.process.stdout.readline()
-      #print('got cmd: \"' + cmd + '\"')
-      if len(cmd) > 0:
-        response = self.handle(cmd)
-        try:
-          if response:
-            contentLength = len(response)
-            self.logMessage('writing length: \"' + str(contentLength) + "\"")
-            self.process.stdin.write(str(contentLength) + "\n")
-            self.logMessage('wrote length')
-            self.process.stdin.write(response)
-            self.logMessage('wrote response')
-          else:
-            self.logMessage('no response')
-          self.process.stdin.flush()
-          self.logMessage ("handled a " + cmd)
-        except IOError:
-          self.stop()
-          self.logMessage ("Needed to abort - IO error in subprocess")
+      # Handle this as a standard request
+      #
+      if not(os.path.dirname(rest).endswith('slicer')):
+        os.chdir(self.server.docroot)
+        self.logMessage(" ... using SimpleHTTPRequestHandler" )
+        SimpleHTTPRequestHandler.do_GET(self)
+        return
 
-  def handle(self, cmd):
+      # Got a /slicer request
+      #
+      if False:
+        # TODO
+        # But we're busy ... write response and return
+        response_headers = [('Content-Type','text/plain')]
+        self.logMessage('Server busy')
+        self.start_response(status, response_headers)
+        self.wfile.write( 'Busy' )
+        return
+
+      # Now we're talking to Slicer...
+      URL = urlparse( rest )
+      ACTION = os.path.basename( URL.path )
+      self.logMessage('Parsing url, action is {' + ACTION +
+        '} query is {' + URL.query + '}')
+
+      # and do the write to stdout / Slicer:stdin
+      #sys.stdout.write( "/" + ACTION + "?"+ URL.query + "\n")
+      #sys.stdout.flush()
+
+      # and read back from stdin / Slicer:stdout
+      #count = int(sys.stdin.readline())
+      #self.logMessage('Trying to read %d bytes from Slicer stdin ...' % count)
+      #body = sys.stdin.read(count)
+      body = "<p>pretend this is what you were asking for"
+      body = self.handleSlicerCommand('/' + ACTION + '?' + URL.query)
+      count = len(body)
+      self.logMessage("  [done]")
+
+      response_headers = [('Content-length', str(count))]
+
+      if ACTION == "repl":
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "preset":
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "mrml":
+        response_headers += [('Content-Type','application/json')]
+      elif ACTION == "scene":
+        response_headers += [('Content-Type','application/json')]
+      elif ACTION == "timeimage":
+        response_headers += [('Content-Type','image/png')]
+      elif ACTION == "slice":
+        response_headers += [('Content-Type','image/png')]
+      elif ACTION == "threeD":
+        response_headers += [('Content-Type','image/png')]
+      elif ACTION == "transform":
+        response_headers += [('Content-Type','image/png')]
+      elif ACTION == "volumeSelection":
+        response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "volume":
+        response_headers += [('Content-Type','application/octet-stream')]
+      elif URL.query.endswith("png"):
+        response_headers += [('Content-Type','image/png')]
+      else:
+        # didn't match known slicer API commands, so we shouldn't
+        # prevent other slicer connections from completing
+        self.logMessage( 'WARNING: no matching action for:' + rest )
+        response_headers += [('Content-Type','text/plain')]
+
+      # FINALLY, write the "body" returned by Slicer as the response
+      self.start_response(status, response_headers)
+      self.wfile.write( body )
+
+    except Exception, e:
+      self.send_error(404, "File not found")
+      import traceback
+      traceback.print_exc()
+
+    # end do_GET
+
+
+  def dumpReq( self, formInput=None ):
+      response= "<html><head></head><body>"
+      response+= "<p>HTTP Request</p>"
+      response+= "<p>self.command= <tt>%s</tt></p>" % ( self.command )
+      response+= "<p>self.path= <tt>%s</tt></p>" % ( self.path )
+      response+= "</body></html>"
+      self.sendPage( "text/html", response )
+
+  def sendPage( self, type, body ):
+      self.send_response( 200 )
+      self.send_header( "Content-type", type )
+      self.send_header( "Content-length", str(len(body)) )
+      self.end_headers()
+      self.wfile.write( body )
+
+  def do_PUT(self):
+    try:
+      self.server.logMessage( "Command: %s Path: %s Headers: %r"
+                        % ( self.command, self.path, self.headers.items() ) )
+      if self.headers.has_key('content-length'):
+          length= int( self.headers['content-length'] )
+          body = self.rfile.read( length )
+          self.logMessage("Got: %s" % body)
+          self.dumpReq( self.rfile.read( length ) )
+      else:
+          self.dumpReq( None )
+
+    except :
+        self.server.logMessage('could not PUT')
+
+  def do_POST(self):
+    #TODO
+    pass
+
+  def handleSlicerCommand(self, cmd):
     import traceback
     message = "No error"
     try:
@@ -277,7 +327,7 @@ class WebServerLogic:
       return response
     except:
       message = traceback.format_exc()
-      self.logMessage("Could not handle command: %s" % cmd)
+      self.logMessage("Could not handle slicer command: %s" % cmd)
       self.logMessage(message)
       return message
 
@@ -515,7 +565,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
-    from PIL import Image
+    if not hasImage:
+      self.logMessage('No image support')
+      return
     import vtk.util.numpy_support
     import numpy
     import slicer
@@ -612,7 +664,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     Args:
      view={nodeid} (currently ignored)
     """
-    from PIL import Image
+    if not hasImage:
+      self.logMessage('No image support')
+      return
     import numpy
     import vtk.util.numpy_support
     import slicer
@@ -731,7 +785,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
   def timeimage(self):
     """For debugging - return an image with the current time
     rendered as text down to the hundredth of a second"""
-    import time
+    if not hasImage:
+      self.logMessage('No image support')
+      return
     from PIL import Image, ImageDraw, ImageFilter
     import slicer
     try:
@@ -756,4 +812,107 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     im.save(pngData, format="PNG")
     return pngData.getvalue()
 
+#
+# SlicerHTTPServer
+#
 
+class SlicerHTTPServer(HTTPServer):
+  """ 
+  This web server is configured to integrate with the Qt main loop
+  by listenting activity on the fileno of the servers socket.
+  """
+  # TODO: set header so client knows that image refreshes are needed (avoid
+  # using the &time=xxx trick)
+  def __init__(self, server_address=("",8070), RequestHandlerClass=SlicerRequestHandler, docroot='.', logFile=None,logMessage=None):
+    HTTPServer.__init__(self,server_address, RequestHandlerClass)
+    self.docroot = docroot
+    self.logFile = logFile
+    if logMessage:
+      self.logMessage = logMessage
+
+
+  def onSocketNotify(self,fileno):
+      # based on SocketServer.py: self.serve_forever()
+      self.logMessage('got request on %d' % fileno)
+      self._handle_request_noblock()
+
+  def start(self):
+    """start the server
+    - use one thread since we are going to communicate 
+    via stdin/stdout, which will get corrupted with more threads
+    """
+    try:
+      self.logMessage('started httpserver...')
+      print ('starting with socket %d' % self.socket.fileno())
+      self.notifier = qt.QSocketNotifier(self.socket.fileno(),qt.QSocketNotifier.Read)
+      print(self.notifier.connect('activated(int)', self.onSocketNotify))
+
+    except KeyboardInterrupt:
+      self.logMessage('KeyboardInterrupt - stopping')
+      self.stop()
+
+  def stop(self):
+    self.socket.close()
+    self.notifier = None
+
+  def logMessage(self,message):
+    if self.logFile:
+      fp = open(self.logFile, "a")
+      fp.write(message + '\n')
+      fp.close()
+
+  @classmethod
+  def findFreePort(self,port=8080):
+    """returns a port that is not apparently in use"""
+    portFree = False
+    while not portFree:
+      try:
+        s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
+        s.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, 1 )
+        s.bind( ( "", port ) )
+        print('fileno is ', s.fileno())
+      except socket.error, e:
+        portFree = False
+        port += 1
+      finally:
+        s.close()
+        portFree = True
+    return port
+
+
+
+#
+# WebServer logic
+#
+
+class WebServerLogic:
+  """Include a concrete subclass of SimpleHTTPServer
+  that speaks slicer.
+  """
+  def __init__(self, logMessage=None):
+    if logMessage:
+      self.logMessage = logMessage
+    self.interactionState = {}
+    self.port = 8080
+    self.server = None
+    self.logFile = '/tmp/WebServerLogic.log'
+
+    moduleDirectory = os.path.dirname(slicer.modules.webserver.path)
+    self.docroot = moduleDirectory + "/docroot"
+
+
+  def logMessage(self,*args):
+    for arg in args:
+      print(arg)
+
+  def start(self):
+    """Create the subprocess and set up a polling timer"""
+    self.stop()
+    self.port = SlicerHTTPServer.findFreePort(self.port)
+    print("Starting server on port %d" % self.port)
+    self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage)
+    self.server.start()
+
+  def stop(self):
+    if self.server:
+      self.server.stop()
