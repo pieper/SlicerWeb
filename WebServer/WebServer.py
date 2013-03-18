@@ -577,7 +577,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
-    print(cmd)
     if not hasImage:
       self.logMessage('No image support')
       return
@@ -855,9 +854,8 @@ class SlicerHTTPServer(HTTPServer):
     """
     try:
       self.logMessage('started httpserver...')
-      print ('starting with socket %d' % self.socket.fileno())
       self.notifier = qt.QSocketNotifier(self.socket.fileno(),qt.QSocketNotifier.Read)
-      print(self.notifier.connect('activated(int)', self.onSocketNotify))
+      self.notifier.connect('activated(int)', self.onSocketNotify)
 
     except KeyboardInterrupt:
       self.logMessage('KeyboardInterrupt - stopping')
@@ -920,7 +918,7 @@ class WebServerLogic:
     """Create the subprocess and set up a polling timer"""
     self.stop()
     self.port = SlicerHTTPServer.findFreePort(self.port)
-    print("Starting server on port %d" % self.port)
+    self.logMessage("Starting server on port %d" % self.port)
     self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage)
     self.server.start()
 
