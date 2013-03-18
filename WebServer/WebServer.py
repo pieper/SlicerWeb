@@ -16,7 +16,6 @@ import socket
 
 from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
 from SimpleHTTPServer import SimpleHTTPRequestHandler
-from urlparse import urlparse
 
 import numpy
 
@@ -54,8 +53,8 @@ class WebServerWidget:
 
   def __init__(self, parent=None):
     self.observerTags = []
-    self.qtMessages = False
-    self.consoleMessages = False
+    self.guiMessages = True
+    self.consoleMessages = True
 
     if not parent:
       self.parent = slicer.qMRMLWidget()
@@ -74,6 +73,10 @@ class WebServerWidget:
   def exit(self):
     pass
 
+  def setLogging(self):
+    self.consoleMessages = self.logToConsole.checked
+    self.guiMessages = self.logToGUI.checked
+
   def setup(self):
 
     # reload button
@@ -88,6 +91,20 @@ class WebServerWidget:
     self.layout.addWidget(self.log)
     self.logMessage('<p>Status: <i>Idle</i>\n')
 
+    # log to console
+    self.logToConsole = qt.QCheckBox('Log to Console')
+    self.logToConsole.setChecked(self.consoleMessages)
+    self.logToConsole.toolTip = "Copy log messages to the python console and parent terminal"
+    self.layout.addWidget(self.logToConsole)
+    self.logToConsole.connect('clicked()', self.setLogging)
+
+    # log to GUI
+    self.logToGUI = qt.QCheckBox('Log to GUI')
+    self.logToGUI.setChecked(self.guiMessages)
+    self.logToGUI.toolTip = "Copy log messages to the log widget"
+    self.layout.addWidget(self.logToGUI)
+    self.logToGUI.connect('clicked()', self.setLogging)
+
     # clear log button
     self.clearLogButton = qt.QPushButton("Clear Log")
     self.clearLogButton.toolTip = "Clear the log window."
@@ -97,6 +114,7 @@ class WebServerWidget:
     # TODO: button to start/stop server
     # TODO: warning dialog on first connect
     # TODO: config option for port
+
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
@@ -148,7 +166,7 @@ class WebServerWidget:
     if self.consoleMessages:
       for arg in args:
         print(arg)
-    if self.qtMessages:
+    if self.guiMessages:
       for arg in args:
         self.log.insertHtml(arg)
       self.log.insertPlainText('\n')
@@ -156,10 +174,10 @@ class WebServerWidget:
       self.log.repaint()
       slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
 
+
 #
 # SlicerRequestHandler
 #
-
 
 class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
@@ -200,25 +218,19 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         return
 
       # Now we're talking to Slicer...
-      URL = urlparse( rest )
+      URL = urlparse.urlparse( rest )
       ACTION = os.path.basename( URL.path )
       self.logMessage('Parsing url, action is {' + ACTION +
         '} query is {' + URL.query + '}')
 
-      # and do the write to stdout / Slicer:stdin
-      #sys.stdout.write( "/" + ACTION + "?"+ URL.query + "\n")
-      #sys.stdout.flush()
-
-      # and read back from stdin / Slicer:stdout
-      #count = int(sys.stdin.readline())
-      #self.logMessage('Trying to read %d bytes from Slicer stdin ...' % count)
-      #body = sys.stdin.read(count)
-      body = "<p>pretend this is what you were asking for"
       body = self.handleSlicerCommand('/' + ACTION + '?' + URL.query)
       count = len(body)
       self.logMessage("  [done]")
 
-      response_headers = [('Content-length', str(count))]
+      response_headers = [
+          ('Content-length', str(count)),
+          ('Cache-Control', 'no-cache'),
+      ]
 
       if ACTION == "repl":
         response_headers += [('Content-Type','text/plain')]
@@ -565,6 +577,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
+    print(cmd)
     if not hasImage:
       self.logMessage('No image support')
       return
@@ -608,8 +621,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       orientation = None
 
     offsetKey = 'offset.'+view
-    if mode == 'start' or not self.interactionState.has_key(offsetKey):
-      self.interactionState[offsetKey] = sliceLogic.GetSliceOffset()
+    #if mode == 'start' or not self.interactionState.has_key(offsetKey):
+      #self.interactionState[offsetKey] = sliceLogic.GetSliceOffset()
 
     if scrollTo:
       volumeNode = sliceLogic.GetBackgroundLayer().GetVolumeNode()
@@ -617,7 +630,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       sliceLogic.GetVolumeSliceBounds(volumeNode,bounds)
       sliceLogic.SetSliceOffset(bounds[4] + (scrollTo * (bounds[5] - bounds[4])))
     if offset:
-      startOffset = self.interactionState[offsetKey]
+      #startOffset = self.interactionState[offsetKey]
       sliceLogic.SetSliceOffset(startOffset + offset)
     if copySliceGeometryFrom:
       otherSliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % copySliceGeometryFrom.capitalize() )
@@ -670,7 +683,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     import numpy
     import vtk.util.numpy_support
     import slicer
-    import urlparse
     try:
         import cStringIO as StringIO
     except ImportError:
@@ -718,11 +730,11 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     if mode:
       cameraNode = slicer.util.getNode('*Camera*')
       camera = cameraNode.GetCamera()
-      if mode == 'start' or not self.interactionState.has_key('camera'):
-        startCamera = vtk.vtkCamera()
-        startCamera.DeepCopy(camera)
-        self.interactionState['camera'] = startCamera
-      startCamera = self.interactionState['camera']
+      #if mode == 'start' or not self.interactionState.has_key('camera'):
+        #startCamera = vtk.vtkCamera()
+        #startCamera.DeepCopy(camera)
+        #self.interactionState['camera'] = startCamera
+      #startCamera = self.interactionState['camera']
       cameraNode.DisableModifiedEventOn()
       camera.DeepCopy(startCamera)
       if roll:
@@ -892,7 +904,6 @@ class WebServerLogic:
   def __init__(self, logMessage=None):
     if logMessage:
       self.logMessage = logMessage
-    self.interactionState = {}
     self.port = 8080
     self.server = None
     self.logFile = '/tmp/WebServerLogic.log'
