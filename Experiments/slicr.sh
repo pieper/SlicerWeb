@@ -7,6 +7,8 @@
 # on ubuntu:
 # sudo ln -s /usr/lib/x86_64-linux-gnu/libz.so /usr/lib
 
+# TODO: take build/install dir as command line option
+
 # for a superbuild:
 SLICER_SUPERBUILD="${HOME}/slicer4/latest/Slicer-superbuild"
 if [ -e ${SLICER_SUPERBUILD} ]; then
@@ -25,6 +27,11 @@ if [ -e ${SLICER_INSTALL} ]; then
 fi
 
 tmpdir=`mktemp -d /tmp/slicr.XXXX`
+
+# install the 'distribute' package for Pillow
+cd ${tmpdir}
+curl -O http://python-distribute.org/distribute_setup.py
+${PYTHON} distribute_setup.py
 
 cd ${tmpdir}
 git clone git@github.com:pieper/Pillow.git
