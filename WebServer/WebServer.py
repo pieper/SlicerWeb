@@ -190,6 +190,27 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
   def logMessage(self, message):
      self.server.logMessage(message)
 
+  def log_message(self, format, *args):
+      """Log an arbitrary message.
+
+      This is used by all other logging functions.  Override
+      it if you have specific logging wishes.
+
+      The first argument, FORMAT, is a format string for the
+      message to be logged.  If the format string contains
+      any % escapes requiring parameters, they should be
+      specified as subsequent arguments (it's just like
+      printf!).
+
+      The client host and current date/time are prefixed to
+      every message.
+
+      """
+
+      self.logMessage("%s - - [%s] %s\n" %
+                       (self.address_string(),
+                        self.log_date_time_string(),
+                        format%args))
 
   def do_GET(self):
     self.protocol_version = 'HTTP/1.1'
@@ -271,6 +292,39 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
     # end do_GET
 
+  def vtkImageDataToPNG(self,imageData,method='VTK'):
+    """Return a buffer of png data using the data
+    from the vtkImageData.
+    """
+    if method == 'PIL':
+      if imageData:
+        imageData.Update()
+        imageScalars = imageData.GetPointData().GetScalars()
+        imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
+        d = imageData.GetDimensions()
+        im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],4]) ) )
+      else:
+        # no data available, make a small black opaque image
+        a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
+        a[:,:,3] = 255
+        im = Image.fromarray( a )
+      if size:
+        im.thumbnail((size,size), Image.ANTIALIAS)
+      pngStringIO = StringIO.StringIO()
+      im.save(pngStringIO, format="PNG")
+      pngData = pngStringIO.getvalue()
+    elif method == 'VTK':
+      writer = vtk.vtkPNGWriter()
+      writer.SetWriteToMemory(True)
+      writer.SetInput(imageData)
+      writer.Write()
+      result = writer.GetResult()
+      pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
+      pngStringIO = StringIO.StringIO()
+      pngStringIO.write(pngArray)
+      pngData = pngStringIO.getvalue()
+
+    return pngData
 
   def dumpReq( self, formInput=None ):
       response= "<html><head></head><body>"
@@ -577,9 +631,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
+    pngMethod = 'PIL'
     if not hasImage:
-      self.logMessage('No image support')
-      return
+      pngMethod = 'VTK'
     import vtk.util.numpy_support
     import numpy
     import slicer
@@ -653,32 +707,18 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
         sliceNode.SetOrientationToCoronal()
 
     imageData = sliceLogic.GetImageData()
-    if imageData:
-      imageData.Update()
-      imageScalars = imageData.GetPointData().GetScalars()
-      imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
-      d = imageData.GetDimensions()
-      im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],4]) ) )
-    else:
-      # no data available, make a small black opaque image
-      a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
-      a[:,:,3] = 255
-      im = Image.fromarray( a )
-    if size:
-      im.thumbnail((size,size), Image.ANTIALIAS)
-    pngData = StringIO.StringIO()
-    im.save(pngData, format="PNG")
-    self.logMessage('returning an image of %d length' % len(pngData.getvalue()))
-    return pngData.getvalue()
+    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+    self.logMessage('returning an image of %d length' % len(pngData))
+    return pngData
 
   def threeD(self,cmd):
     """return a png for a threeD view
     Args:
      view={nodeid} (currently ignored)
     """
+    pngMethod = 'PIL'
     if not hasImage:
-      self.logMessage('No image support')
-      return
+      pngMethod = 'VTK'
     import numpy
     import vtk.util.numpy_support
     import slicer
@@ -776,22 +816,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     w2i.Update()
     imageData = w2i.GetOutput()
 
-    if imageData:
-      imageScalars = imageData.GetPointData().GetScalars()
-      imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
-      d = imageData.GetDimensions()
-      im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],3]) ) )
-    else:
-      # no data available, make a small black opaque image
-      a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
-      a[:,:,3] = 255
-      im = Image.fromarray( a )
-    if size:
-      im.thumbnail((size,size), Image.ANTIALIAS)
-    pngData = StringIO.StringIO()
-    im.save(pngData, format="PNG")
-    self.logMessage('threeD returning an image of %d length' % len(pngData.getvalue()))
-    return pngData.getvalue()
+    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+    self.logMessage('threeD returning an image of %d length' % len(pngData))
+    return pngData
 
   def timeimage(self):
     """For debugging - return an image with the current time
@@ -880,7 +907,6 @@ class SlicerHTTPServer(HTTPServer):
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         s.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, 1 )
         s.bind( ( "", port ) )
-        print('fileno is ', s.fileno())
       except socket.error, e:
         portFree = False
         port += 1
@@ -912,7 +938,7 @@ class WebServerLogic:
 
   def logMessage(self,*args):
     for arg in args:
-      print(arg)
+      print("Logic: " + arg)
 
   def start(self):
     """Create the subprocess and set up a polling timer"""
