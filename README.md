@@ -3,19 +3,44 @@ SlicerWeb
 
 Slicer modules that support web services and web applications.
 
-*Note* this is still experimental and can't be used by normal people yet :)
+(Still a work in progress, but starting to be useable)
 
-Requires: PIL (see Experiments/slicr.sh for example installation
-script).  Also requires python executable and distutils module in Slicer's
-python.
-These are available in a local slicer superbuild, but must be added manually if
-you are using a binary download of slicer from slicer.org.
+Installation
+============
 
+This module can now be run from any slicer 4.2 binary download (release or nightly).
 
-5/20/2012 dtc
-=============
-Starting integration to AWS instance. Next step is to hookup the locally running
-Slicer to this repo
+Simply run slicer with these arguments:
+
+ ./path/to/Slicer --additional-module-paths path/to/SlicerWeb/WebServer
+
+where 'path/to' is replaced with the appropriate paths.  You could alternatively
+register the path/to/SlicerWeb/WebServer in the Module paths of the Application Settings dialog.
+
+Usage
+=====
+
+Go to the Servers->WebServer module and the server will start.
+
+Access http://localhost:8080 with a web browser.
+
+NOTE: after you select a demo, use the Reload button to trigger it.
+
+NOTE: some demos require a WebGL compatible browser.
+
+Direct API access:
+ 
+* get a json dump of the names of all nodes in mrml:
+
+ http://localhost:8080/slicer/mrml
+
+* get a png image of the threeD View
+
+ http://localhost:8080/slicer/threeD
+
+* get a png image of the yellow slice view
+
+ http://localhost:8080/slicer/slice?view=yellow
 
 
 5/24/2012 sp
