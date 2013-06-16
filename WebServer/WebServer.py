@@ -115,12 +115,21 @@ class WebServerWidget:
     # TODO: warning dialog on first connect
     # TODO: config option for port
 
+    # open local connection button
+    self.localConnectionButton = qt.QPushButton("Open Page")
+    self.localConnectionButton.toolTip = "Open a connection to the server on the local machine."
+    self.layout.addWidget(self.localConnectionButton)
+    self.localConnectionButton.connect('clicked()', self.openLocalConnection)
+
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
 
     # Add spacer to layout
     self.layout.addStretch(1)
+
+  def openLocalConnection(self):
+    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:8080'))
 
   def onReload(self):
     import imp, sys, os
