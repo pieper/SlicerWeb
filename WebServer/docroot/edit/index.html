@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <title>Slicer Edit</title>
+    <meta content='width=device-width, initial-scale=1' name='viewport'>
+    <!-- 
+    TODO: consider moving all 'includes' to a helper script that manages versioning
+    http://stackoverflow.com/questions/950087/how-to-include-a-javascript-file-in-another-javascript-file
+    -->
+    <!-- jSlicer framework includes -->
+    <link href='http://code.jquery.com/mobile/1.3.2/jquery.mobile-1.3.2.min.css' rel='stylesheet'>
+    <script src='http://code.jquery.com/jquery-2.0.3.min.js'></script>
+    <script src='http://code.jquery.com/mobile/1.3.2/jquery.mobile-1.3.2.min.js'></script>
+    <link href='http://code.jquery.com/mobile/1.3.2/jquery.mobile-1.3.2.min.css' rel='stylesheet'>
+
+    <script src="http://d3lp1msu2r81bx.cloudfront.net/kjs/js/lib/kinetic-v4.7.4.min.js"></script>
+
+    <!-- jSlicer includes -->
+    <link href='../stylesheets/application.css' rel='stylesheet'>
+    <script src='../jSlicer/view.js'></script>
+    <script src='../jSlicer/widgets.js' defer></script>
+
+
+    <script defer="defer">
+      // from:
+      //http://www.html5canvastutorials.com/labs/html5-canvas-modify-curves-with-anchor-points-using-kineticjs/  
+      
+      // globals
+      var curveLayer, lineLayer, anchorLayer, quad, bezier
+      
+      function updateDottedLines() {
+        var q = quad;
+        var b = bezier;
+
+        var quadLine = lineLayer.get('#quadLine')[0];
+        var bezierLine = lineLayer.get('#bezierLine')[0];
+
+        quadLine.setPoints([q.start.attrs.x, q.start.attrs.y, q.control.attrs.x, q.control.attrs.y, q.end.attrs.x, q.end.attrs.y]);
+
+        bezierLine.setPoints([b.start.attrs.x, b.start.attrs.y, b.control1.attrs.x, b.control1.attrs.y, b.control2.attrs.x, b.control2.attrs.y, b.end.attrs.x, b.end.attrs.y]);
+        lineLayer.draw();
+      }
+      function buildAnchor(x, y) {
+        var anchor = new Kinetic.Circle({
+          x: x,
+          y: y,
+          radius: 20,
+          stroke: '#666',
+          fill: '#ddd',
+          strokeWidth: 2,
+          draggable: true
+        });
+
+        // add hover styling
+        anchor.on('mouseover', function() {
+          document.body.style.cursor = 'pointer';
+          this.setStrokeWidth(4);
+          anchorLayer.draw();
+        });
+        anchor.on('mouseout', function() {
+          document.body.style.cursor = 'default';
+          this.setStrokeWidth(2);
+          anchorLayer.draw();
+          
+        });
+
+        anchor.on('dragend', function() {
+          drawCurves();
+          updateDottedLines();
+        });
+
+        anchorLayer.add(anchor);
+        return anchor;
+      }
+      function drawCurves() {
+        var context = curveLayer.getContext();
+
+        context.clear();
+
+        // draw quad
+        context.beginPath();
+        context.moveTo(quad.start.attrs.x, quad.start.attrs.y);
+        context.quadraticCurveTo(quad.control.attrs.x, quad.control.attrs.y, quad.end.attrs.x, quad.end.attrs.y);
+        context.setAttr('strokeStyle', 'red');
+        context.setAttr('lineWidth', 4);
+        context.stroke();
+
+        // draw bezier
+        context.beginPath();
+        context.moveTo(bezier.start.attrs.x, bezier.start.attrs.y);
+        context.bezierCurveTo(bezier.control1.attrs.x, bezier.control1.attrs.y, bezier.control2.attrs.x, bezier.control2.attrs.y, bezier.end.attrs.x, bezier.end.attrs.y);
+        context.setAttr('strokeStyle', 'blue');
+        context.setAttr('lineWidth', 4);
+        context.stroke();
+      }
+
+      window.onload = function() {
+        var stage = new Kinetic.Stage({
+          container: 'container',
+          width: 578,
+          height: 200
+        });
+
+        anchorLayer = new Kinetic.Layer();
+        lineLayer = new Kinetic.Layer;
+
+        // curveLayer just contains a canvas which is drawn
+        // onto with the existing canvas API
+        curveLayer = new Kinetic.Layer();
+
+        var quadLine = new Kinetic.Line({
+          dashArray: [10, 10, 0, 10],
+          strokeWidth: 3,
+          stroke: 'black',
+          lineCap: 'round',
+          id: 'quadLine',
+          opacity: 0.3,
+          points: [0, 0]
+        });
+
+        var bezierLine = new Kinetic.Line({
+          dashArray: [10, 10, 0, 10],
+          strokeWidth: 3,
+          stroke: 'black',
+          lineCap: 'round',
+          id: 'bezierLine',
+          opacity: 0.3,
+          points: [0, 0]
+        });
+
+        // add dotted line connectors
+        lineLayer.add(quadLine);
+        lineLayer.add(bezierLine);
+
+        quad = {
+          start: buildAnchor(60, 30),
+          control: buildAnchor(240, 110),
+          end: buildAnchor(80, 160)
+        };
+             bezier = {
+          start: buildAnchor(280, 20),
+          control1: buildAnchor(530, 40),
+          control2: buildAnchor(480, 150),
+          end: buildAnchor(300, 150)
+        };
+
+        // keep curves insync with the lines
+        anchorLayer.on('beforeDraw', function() {
+          drawCurves();
+          updateDottedLines();
+        });
+
+        stage.add(curveLayer);
+        stage.add(lineLayer);
+        stage.add(anchorLayer);
+
+        drawCurves();
+        updateDottedLines();
+
+      };
+
+    </script> 
+  </head>
+  <body onmousedown="return false;">
+    <div data-role='page' data-title='3D Slicer Segmentation Editor' id='page1'>
+      <style>
+          #viewContainer {
+            border: 1px solid #00c;
+            color: black;
+          }
+          canvas {
+            color: black;
+          }
+          .ui-bar {
+            height: 24px;
+          }
+          #log {
+            width: 200px;
+            height: 200px;
+            border: 0px solid red;
+            position: absolute;
+            top: 0px;
+            left: 0px;
+          }
+          #page1 {
+            position: relative;
+          }
+      </style>
+      <h1>hoot</h1>
+      <div class='ui-grid-a'>
+        <div id='viewContainer1' class='ui-block-a'>
+          <div class='ui-bar ui-bar-d'>
+            Red Slice View
+          </div>
+          <canvas id='redView' class='slicerView' view='Red' size='native'></canvas>
+        </div>
+        <div id='viewContainer2' class='ui-block-b'>
+          <div class='ui-bar ui-bar-d'>
+            Green Slice View
+          </div>
+          <canvas id='greenView' class='slicerView' view='Green' size='native'></canvas>
+        </div>
+      </div>
+    </div>
+    <div id='log'></div>
+    <div id="container"></div>
+  </body>
+</html>
+
