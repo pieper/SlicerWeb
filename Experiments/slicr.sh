@@ -38,6 +38,11 @@ git clone git@github.com:pieper/Pillow.git
 cd Pillow
 ${PYTHON} setup.py install
 
+cd ${tmpdir}
+hg clone https://code.google.com/p/couchdb-python/
+cd couchdb-python
+${PYTHON} setup.py install
+
 ### not used
 # echo ${tmpdir}
 # cd ${tmpdir}
