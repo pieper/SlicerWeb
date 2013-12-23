@@ -26,6 +26,7 @@ try:
   from PIL import Image
 except ImportError:
   hasImage = False
+hasImage = False
 
 #
 # WebServer
@@ -317,8 +318,8 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
         a[:,:,3] = 255
         im = Image.fromarray( a )
-      if size:
-        im.thumbnail((size,size), Image.ANTIALIAS)
+      #if size:
+        #im.thumbnail((size,size), Image.ANTIALIAS)
       pngStringIO = StringIO.StringIO()
       im.save(pngStringIO, format="PNG")
       pngData = pngStringIO.getvalue()
@@ -656,7 +657,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     options = ['red', 'yellow', 'green']
     if not view in options:
       view = 'red'
-    sliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % view.capitalize() )
+    layoutManager = slicer.app.layoutManager()
+    sliceLogic = layoutManager.sliceWidget(view.capitalize()).sliceLogic()
     try:
       mode = str(q['mode'][0].strip())
     except (KeyError, ValueError):
@@ -695,7 +697,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       #startOffset = self.interactionState[offsetKey]
       sliceLogic.SetSliceOffset(startOffset + offset)
     if copySliceGeometryFrom:
-      otherSliceLogic = eval( "slicer.sliceWidget%s_sliceLogic" % copySliceGeometryFrom.capitalize() )
+      otherSliceLogic = layoutManager.sliceWidget(copySliceGeometryFrom.capitalize()).sliceLogic()
       otherSliceNode = otherSliceLogic.GetSliceNode()
       sliceNode = sliceLogic.GetSliceNode()
       # technique from vtkMRMLSliceLinkLogic (TODO: should be exposed as method)
