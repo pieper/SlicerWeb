@@ -878,7 +878,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     # make a generally transparent image,
     #
     imageWidth = 128
-    imageHeight = 30
+    imageHeight = 32
     timeImage = qt.QImage(imageWidth, imageHeight, qt.QImage().Format_ARGB32)
     timeImage.fill(0)
 
@@ -896,6 +896,9 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     painter.setPen(pen)
     rect = qt.QRect(1, 1, imageWidth-2, imageHeight-2)
     painter.drawRect(rect)
+    color = qt.QColor("#333")
+    pen.setColor(color)
+    painter.setPen(pen)
     position = qt.QPoint(10,20)
     text = str(time.time()) # text to draw
     painter.drawText(position, text)
