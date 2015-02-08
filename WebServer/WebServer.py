@@ -327,6 +327,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       writer = vtk.vtkPNGWriter()
       writer.SetWriteToMemory(True)
       writer.SetInputData(imageData)
+      writer.SetCompressionLevel(0)
       writer.Write()
       result = writer.GetResult()
       pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
