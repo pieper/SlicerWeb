@@ -70,7 +70,7 @@ class WebServerWidget:
 
   def enter(self):
     pass
-    
+
   def exit(self):
     pass
 
@@ -326,7 +326,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
     elif method == 'VTK':
       writer = vtk.vtkPNGWriter()
       writer.SetWriteToMemory(True)
-      writer.SetInput(imageData)
+      writer.SetInputData(imageData)
       writer.Write()
       result = writer.GetResult()
       pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
@@ -379,7 +379,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       if cmd.find('/preset') == 0:
         return (self.preset(cmd))
       if cmd.find('/timeimage') == 0:
-        return (self.timeimage())
+        return (self.timeimage(cmd))
       if cmd.find('/slice') == 0:
         self.logMessage ("got request for slice ("+cmd+")")
         return (self.slice(cmd))
@@ -531,12 +531,12 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         self.modelDisplay = slicer.vtkMRMLModelDisplayNode()
         self.modelDisplay.SetColor(1,1,0) # yellow
         slicer.mrmlScene.AddNode(self.modelDisplay)
-        self.modelDisplay.SetPolyData(self.cube.GetOutput())
+        self.modelDisplay.SetPolyData(self.cube.GetOutputPort())
         # Create model node
         self.idevice = slicer.vtkMRMLModelNode()
         self.idevice.SetScene(slicer.mrmlScene)
         self.idevice.SetName("idevice")
-        self.idevice.SetAndObservePolyData(self.cube.GetOutput())
+        self.idevice.SetAndObservePolyData(self.cube.GetOutputPort())
         self.idevice.SetAndObserveDisplayNodeID(self.modelDisplay.GetID())
         slicer.mrmlScene.AddNode(self.idevice)
         # tracker
@@ -831,7 +831,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     self.logMessage('threeD returning an image of %d length' % len(pngData))
     return pngData
 
-  def timeimage(self):
+  def timeimagePIL(self):
     """For debugging - return an image with the current time
     rendered as text down to the hundredth of a second"""
     if not hasImage:
@@ -852,7 +852,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     red = (255,200,100)    # color of our text
     text_pos = (10,10) # top-left position of our text
     text = str(time.time()) # text to draw
-    # Now, we'll do the drawing: 
+    # Now, we'll do the drawing:
     draw.text(text_pos, text, fill=red)
     del draw # I'm done drawing so I don't need this anymore
     im = im.filter(ImageFilter.SMOOTH)
@@ -861,12 +861,57 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     im.save(pngData, format="PNG")
     return pngData.getvalue()
 
+  def timeimage(self,cmd=''):
+    """For debugging - return an image with the current time
+    rendered as text down to the hundredth of a second"""
+
+    # check arguments
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      color = "#" + q['color'][0].strip().lower()
+    except KeyError:
+      color = "#330"
+
+    #
+    # make a generally transparent image,
+    #
+    imageWidth = 128
+    imageHeight = 30
+    timeImage = qt.QImage(imageWidth, imageHeight, qt.QImage().Format_ARGB32)
+    timeImage.fill(0)
+
+    # a painter to use for various jobs
+    painter = qt.QPainter()
+
+    # draw a border around the pixmap
+    painter.begin(timeImage)
+    pen = qt.QPen()
+    color = qt.QColor(color)
+    color.setAlphaF(0.8)
+    pen.setColor(color)
+    pen.setWidth(5)
+    pen.setStyle(3) # dotted line (Qt::DotLine)
+    painter.setPen(pen)
+    rect = qt.QRect(1, 1, imageWidth-2, imageHeight-2)
+    painter.drawRect(rect)
+    position = qt.QPoint(10,20)
+    text = str(time.time()) # text to draw
+    painter.drawText(position, text)
+    painter.end()
+
+    # convert the image to vtk, then to png from there
+    vtkTimeImage = vtk.vtkImageData()
+    slicer.qMRMLUtils().qImageToVtkImageData(timeImage, vtkTimeImage)
+    pngData = self.vtkImageDataToPNG(vtkTimeImage)
+    return pngData
+
 #
 # SlicerHTTPServer
 #
 
 class SlicerHTTPServer(HTTPServer):
-  """ 
+  """
   This web server is configured to integrate with the Qt main loop
   by listenting activity on the fileno of the servers socket.
   """
@@ -887,7 +932,7 @@ class SlicerHTTPServer(HTTPServer):
 
   def start(self):
     """start the server
-    - use one thread since we are going to communicate 
+    - use one thread since we are going to communicate
     via stdin/stdout, which will get corrupted with more threads
     """
     try:

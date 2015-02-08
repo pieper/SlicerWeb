@@ -143,7 +143,11 @@
         var im = document.getElementById("flatimage");
         //im.src = "http://boggs.bwh.harvard.edu/timeimage"
         //im.src = "http://192.168.0.108:8070/slicer/red" + "/" + (new Date()).getTime();
-        im.src = "/slicer/timeimage"
+        r = Math.round(Math.random()*255).toString(16);
+        g = Math.round(Math.random()*255).toString(16);
+        b = Math.round(Math.random()*255).toString(16);
+        color = r+g+b;
+        im.src = "/slicer/timeimage" + "?color=" + color
         neheTexture.image.src = im.src;
     }
  
