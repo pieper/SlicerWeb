@@ -1,0 +1,88 @@
+
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <title>3D Slicer Web Video</title>
+    <link href='video.css' rel='stylesheet'>
+  </head>
+  <body>
+
+  <script>
+  // from http://jsfiddle.net/codepo8/agaRe/4/
+
+  document.addEventListener("DOMContentLoaded", function(event) {
+
+   var log = function(s) {
+      var node = document.createElement("LI");
+      var textnode = document.createTextNode(s);         // Create a text node
+      node.appendChild(textnode);
+    };
+
+    var streaming = false,
+        video        = document.querySelector('#video'),
+        cover        = document.querySelector('#cover'),
+        canvas       = document.querySelector('#canvas'),
+        photo        = document.querySelector('#photo'),
+        startbutton  = document.querySelector('#startbutton'),
+        width = 200,
+        height = 0;
+
+    navigator.getUserMedia = ( navigator.getUserMedia ||
+                           navigator.webkitGetUserMedia ||
+                           navigator.mozGetUserMedia ||
+                           navigator.msGetUserMedia);
+
+    navigator.getUserMedia(
+      {
+        video: true,
+        audio: false
+      },
+      function(stream) {
+        log(stream);
+        if (navigator.mozGetUserMedia) {
+          video.mozSrcObject = stream;
+        } else {
+          var vendorURL = window.URL || window.webkitURL;
+          video.src = vendorURL ? vendorURL.createObjectURL(stream) : stream;
+        }
+        video.play();
+      },
+      function(err) {
+        console.log("An error occured! " + err);
+      }
+    );
+
+    video.addEventListener('canplay', function(ev){
+      if (!streaming) {
+        height = video.videoHeight / (video.videoWidth/width);
+        video.setAttribute('width', width);
+        video.setAttribute('height', height);
+        canvas.setAttribute('width', width);
+        canvas.setAttribute('height', height);
+        streaming = true;
+      }
+    }, false);
+
+    function takepicture() {
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(video, 0, 0, width, height);
+      var data = canvas.toDataURL('image/png');
+      photo.setAttribute('src', data);
+    }
+
+    startbutton.addEventListener('click', function(ev){
+        takepicture();
+      ev.preventDefault();
+    }, false);
+
+   });
+  </script>
+
+  <video autoplay id="video"></video>
+  <button id="startbutton">Take photo</button>
+  <canvas id="canvas"></canvas>
+  <img src="http://placekitten.com/g/200/150" id="photo" alt="photo">
+
+  </body>
+</html>

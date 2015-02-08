@@ -1,0 +1,28 @@
+html {
+    background: #111111;
+    height: 100%;
+    background: linear-gradient( #333, #000);
+}
+canvas {
+    display: none;
+}
+video, img, #startbutton {
+    display: block;
+    float: left;
+    border: 10px solid #fff;
+    border-radius: 10px;
+}
+#startbutton {
+    background: green;
+    border: none;
+    color: #fff;
+    margin: 100px 20px 20px 20px;
+    padding: 10px 20px;
+    font-size: 20px;
+}
+#container {
+    overflow: hidden;
+    width: 880px;
+    margin: 20px auto;
+}
+
