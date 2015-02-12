@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta name="description" content="Simplest possible examples of HTML, CSS and JavaScript." />
+<meta name="author" content="//samdutton.com">
+<meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
+<meta itemprop="name" content="simpl.info: simplest possible examples of HTML, CSS and JavaScript">
+<meta itemprop="image" content="/icon_192x192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta id="theme-color" name="theme-color" content="#fff">
+
+<base target="_blank">
+
+<title>Browser tracking for mobile</title>
+
+<link rel="stylesheet" href="../stylesheets/application.css" />
+
+	<style>
+  div.select {
+    margin: 0 0 1em 0;
+  }
+  </style>
+
+</head>
+
+<body>
+
+<script>
+/* getSources inspired from https://github.com/samdutton/simpl/tree/master/getusermedia */
+</script>
+
+<div id="container">
+
+  <h1>Data for tracking</h1>
+
+  <div class="select">
+    <label for="videoSource">Video source: </label><select id="videoSource"></select>
+  </div>
+
+  <h2>There won't be any picture until you approve the use of the camera.</h2>
+
+  <video muted autoplay></video>
+
+  <script>
+
+'use strict';
+
+/*
+* Video
+*/
+var videoElement = document.querySelector('video');
+var videoSelect = document.querySelector('select#videoSource');
+
+// handle browser differences
+navigator.getUserMedia = navigator.getUserMedia ||
+  navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+// when a source is found
+function gotSources(sourceInfos) {
+  for (var i = 0; i !== sourceInfos.length; ++i) {
+    var sourceInfo = sourceInfos[i];
+    var option = document.createElement('option');
+    option.value = sourceInfo.id;
+    if (sourceInfo.kind === 'video') {
+      option.text = sourceInfo.label || 'camera ' + (videoSelect.length + 1);
+      videoSelect.appendChild(option);
+    } else {
+      console.log('Some other kind of source: ', sourceInfo);
+    }
+  }
+}
+
+// ask for sources
+if (typeof MediaStreamTrack.getSources === 'undefined'){
+  alert('This browser does not support MediaStreamTrack.\n\nTry Chrome Canary.');
+} else {
+  MediaStreamTrack.getSources(gotSources);
+}
+
+// play the video when it's available
+function successCallback(stream) {
+  window.stream = stream; // make stream available to console
+  videoElement.src = window.URL.createObjectURL(stream);
+  videoElement.play();
+}
+
+videoElement.addEventListener('canplay', function(ev){
+  var width = 300;
+  var height = videoElement.videoHeight / (videoElement.videoWidth/width);
+  videoElement.setAttribute('width', width);
+  videoElement.setAttribute('height', height);
+}, false);
+
+// or error out
+function errorCallback(error){
+  console.log('navigator.getUserMedia error: ', error);
+}
+
+// entry point for video
+function videoStart(){
+  if (!!window.stream) {
+    videoElement.src = null;
+    window.stream.stop();
+  }
+  var videoSource = videoSelect.value;
+  var constraints = {
+    video: {
+      optional: [{sourceId: videoSource}]
+    }
+  };
+  navigator.getUserMedia(constraints, successCallback, errorCallback);
+}
+
+videoSelect.onchange = videoStart;
+
+videoStart();
+
+</script>
+
+
+<span id="orientation"></span>
+
+<script>
+  
+var orientationLabel = document.getElementById('orientation');
+orientationLabel.innerHTML = "<p> listening for orientation events...</p>";
+
+window.addEventListener('deviceorientation', function(e) {
+        /* e.alpha, beta: e.beta, gamma: e.gamma */
+        var orientationLabel = document.getElementById('orientation');
+        orientationLabel.innerHTML = "<p> e = " + e + "</p>";
+        orientationLabel.innerHTML += "<p> alpha = " + e.alpha + "</p>";
+        orientationLabel.innerHTML += "<p> beta = " + e.beta + "</p>";
+        orientationLabel.innerHTML += "<p> gamma = " + e.gamma + "</p>";
+        orientationLabel.innerHTML += "<p> absolute = " + e.absolute + "</p>";
+}, true);
+
+</script>
+
+
+  <p>This demo requires Chrome 30 or later.</p>
+
+</div>
+
+
+</body>
+</html>
