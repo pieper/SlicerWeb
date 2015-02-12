@@ -182,7 +182,7 @@ class WebServerWidget:
       self.log.insertPlainText('\n')
       self.log.ensureCursorVisible()
       self.log.repaint()
-      slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+      #slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
 
 
 #
