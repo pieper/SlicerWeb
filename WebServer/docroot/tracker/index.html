@@ -2,32 +2,16 @@
 <html>
 <head>
 
-<meta name="description" content="Simplest possible examples of HTML, CSS and JavaScript." />
-<meta name="author" content="//samdutton.com">
-<meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
-<meta itemprop="name" content="simpl.info: simplest possible examples of HTML, CSS and JavaScript">
-<meta itemprop="image" content="/icon_192x192.png">
-<meta name="mobile-web-app-capable" content="yes">
-<meta id="theme-color" name="theme-color" content="#fff">
+  <title>Browser tracking for mobile</title>
 
-<base target="_blank">
-
-<title>Browser tracking for mobile</title>
-
-<link rel="stylesheet" href="../stylesheets/application.css" />
-
-	<style>
-  div.select {
-    margin: 0 0 1em 0;
-  }
-  </style>
+  <link rel="stylesheet" href="../stylesheets/application.css" />
+  <script src='http://code.jquery.com/jquery-2.0.3.min.js'></script>
 
 </head>
 
 <body>
 
-<div id='videos'>
-</div>
+<div id='videos'> </div>
 
 <script>
 /* getSources inspired from https://github.com/samdutton/simpl/tree/master/getusermedia */
@@ -37,37 +21,22 @@
 
   <h1>Data for tracking</h1>
 
-  <div class="select">
-    <label for="videoSource">Video source: </label><select id="videoSource"></select>
-  </div>
+  <h2>There won't be any picture until you approve the use of the camera(s).</h2>
 
-  <h2>There won't be any picture until you approve the use of the camera.</h2>
-
-  <video muted autoplay></video>
-
-  <script>
+<script>
 
 'use strict';
-
-/*
-* Video
-*/
-var videoElement = document.querySelector('video');
-var videoSelect = document.querySelector('select#videoSource');
 
 // handle browser differences
 navigator.getUserMedia = navigator.getUserMedia ||
   navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
 
-// when a source is found
+// when sources are found
 function gotSources(sourceInfos) {
   for (var i = 0; i !== sourceInfos.length; ++i) {
     var sourceInfo = sourceInfos[i];
-    var option = document.createElement('option');
-    option.value = sourceInfo.id;
     if (sourceInfo.kind === 'video') {
-      option.text = sourceInfo.label || 'camera ' + (videoSelect.length + 1);
-      videoSelect.appendChild(option);
+      videoStart(sourceInfo.id);
     } else {
       console.log('Some other kind of source: ', sourceInfo);
     }
@@ -81,23 +50,22 @@ if (typeof MediaStreamTrack.getSources === 'undefined'){
   MediaStreamTrack.getSources(gotSources);
 }
 
+var videoCount = 0;
 // play the video when it's available
 function successCallback(stream) {
-
-  var videoDiv = document.querySelector('#videos');
-  videoDiv.append('<video id=video1></video><p>Video1</p>');
-  videoElement = document.querySelector('#video1');
-  window.stream = stream; // make stream available to console
+  videoCount += 1;
+  var videoID = "video"+videoCount;
+  $('#videos').append('<video id='+videoID+'></video><p>'+videoID+'</p>');
+  var videoElement = document.querySelector('#video1');
   videoElement.src = window.URL.createObjectURL(stream);
+  videoElement.addEventListener('canplay', function(ev){
+    var width = 200;
+    var height = videoElement.videoHeight / (videoElement.videoWidth/width);
+    videoElement.setAttribute('width', width);
+    videoElement.setAttribute('height', height);
+  }, false);
   videoElement.play();
 }
-
-videoElement.addEventListener('canplay', function(ev){
-  var width = 300;
-  var height = videoElement.videoHeight / (videoElement.videoWidth/width);
-  videoElement.setAttribute('width', width);
-  videoElement.setAttribute('height', height);
-}, false);
 
 // or error out
 function errorCallback(error){
@@ -105,12 +73,7 @@ function errorCallback(error){
 }
 
 // entry point for video
-function videoStart(){
-  if (!!window.stream) {
-    videoElement.src = null;
-    window.stream.stop();
-  }
-  var videoSource = videoSelect.value;
+function videoStart(videoSource){
   var constraints = {
     video: {
       optional: [{sourceId: videoSource}]
@@ -118,10 +81,6 @@ function videoStart(){
   };
   navigator.getUserMedia(constraints, successCallback, errorCallback);
 }
-
-videoSelect.onchange = videoStart;
-
-videoStart();
 
 </script>
 
