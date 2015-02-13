@@ -26,6 +26,9 @@
 
 <body>
 
+<div id='videos'>
+</div>
+
 <script>
 /* getSources inspired from https://github.com/samdutton/simpl/tree/master/getusermedia */
 </script>
@@ -80,6 +83,10 @@ if (typeof MediaStreamTrack.getSources === 'undefined'){
 
 // play the video when it's available
 function successCallback(stream) {
+
+  var videoDiv = document.querySelector('#videos');
+  videoDiv.append('<video id=video1></video><p>Video1</p>');
+  videoElement = document.querySelector('#video1');
   window.stream = stream; // make stream available to console
   videoElement.src = window.URL.createObjectURL(stream);
   videoElement.play();
