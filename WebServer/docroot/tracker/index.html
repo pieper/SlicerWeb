@@ -31,12 +31,16 @@
 navigator.getUserMedia = navigator.getUserMedia ||
   navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
 
+var skipFirst = true;
 // when sources are found
 function gotSources(sourceInfos) {
   for (var i = 0; i !== sourceInfos.length; ++i) {
     var sourceInfo = sourceInfos[i];
     if (sourceInfo.kind === 'video') {
-      videoStart(sourceInfo.id);
+      if (!skipFirst) {
+        videoStart(sourceInfo.id);
+      }
+      skipFirst = false;
     } else {
       console.log('Some other kind of source: ', sourceInfo);
     }
@@ -55,16 +59,16 @@ var videoCount = 0;
 function successCallback(stream) {
   videoCount += 1;
   var videoID = "video"+videoCount;
-  $('#videos').append('<video id='+videoID+'></video><p>'+videoID+'</p>');
+  $('#videos').append('<video autoplay id='+videoID+'></video><p>'+videoID+'</p>');
   var videoElement = document.querySelector('#video1');
   videoElement.src = window.URL.createObjectURL(stream);
+  videoElement.play();
   videoElement.addEventListener('canplay', function(ev){
     var width = 200;
     var height = videoElement.videoHeight / (videoElement.videoWidth/width);
     videoElement.setAttribute('width', width);
     videoElement.setAttribute('height', height);
   }, false);
-  videoElement.play();
 }
 
 // or error out
