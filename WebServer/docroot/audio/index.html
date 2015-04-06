@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+  <title>Audio display example</title>
+
+  <link rel="stylesheet" href="../stylesheets/application.css" />
+  <script src='http://code.jquery.com/jquery-2.0.3.min.js'></script>
+
+</head>
+
+<body>
+
+<div id='audios'> </div>
+
+<script> /* getSources inspired from https://github.com/samdutton/simpl/tree/master/getusermedia */ </script>
+
+<div id="container">
+
+  <h1>Audio Data</h1>
+
+  <h2>Be sure to approve requests for the camera(s) and microphone(s).</h2>
+
+<script>
+
+'use strict';
+
+// handle browser differences
+navigator.getUserMedia = navigator.getUserMedia ||
+  navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+
+// when sources are found
+function gotSources(sourceInfos) {
+  for (var i = 0; i !== sourceInfos.length; ++i) {
+    var sourceInfo = sourceInfos[i];
+    if (sourceInfo.kind === 'video') {
+      console.log("There's video, but we don't care: ", sourceInfo);
+    }
+    if (sourceInfo.kind === 'audio') {
+      audioStart(sourceInfo.id);
+    } else {
+      console.log('Some other kind of source: ', sourceInfo);
+    }
+  }
+}
+
+// ask for sources
+if (typeof MediaStreamTrack.getSources === 'undefined'){
+  alert('This browser does not support MediaStreamTrack.\n\nTry Chrome Canary.');
+} else {
+  MediaStreamTrack.getSources(gotSources);
+}
+
+// or error out
+function errorCallback(error){
+  console.log('navigator.getUserMedia error: ', error);
+}
+
+var scopeWidth = 640;
+var scopeHeight = 100;
+var audioCount = 0;
+// listen to the audio and display activity
+function audioSuccessCallback(stream) {
+  audioCount += 1;
+  var audioID = "audio"+audioCount;
+  // make new elements for the audio pieces
+  $('#audios').append('<audio id='+audioID+'></audio>');
+  $('#audios').append('<p id='+audioID+'text>'+audioID+'</p>');
+  $('#audios').append('<canvas id='+audioID+'canvas></canvas>');
+  $('#'+audioID+'canvas').attr('width',scopeWidth);
+  $('#'+audioID+'canvas').attr('height',scopeHeight);
+  var canvasContext = $('#'+audioID+'canvas').get(0).getContext('2d');
+  // set up to track audio
+  var audioContext = new AudioContext();
+  var analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0;
+  var microphone = audioContext.createMediaStreamSource(stream);
+  microphone.connect(analyser);
+  // redraw the scop every frame
+  var bufferLength = analyser.frequencyBinCount;
+  var fftData = new Float32Array(bufferLength);
+  var timeData = new Uint8Array(bufferLength);
+  var iteration = 0;
+  var process = function() {
+    iteration += 1;
+    analyser.getFloatFrequencyData(fftData);
+    var sum = 0.;
+    $.each(fftData, function(sample) {sum += sample});
+    analyser.getByteTimeDomainData(timeData);
+    var minmax = drawScope(canvasContext, timeData, fftData);
+    $('#'+audioID+'text').text(audioID + "  " + iteration + "  " + minmax);
+    setTimeout(process, 20);
+  }
+  process();
+}
+
+
+// draw an oscilloscope of the current audio source
+// https://developer.mozilla.org/en-US/docs/Web/API/AnalyserNode
+function drawScope(canvasContext, timeData, fftData) {
+  var bufferLength = timeData.length;
+  var sliceWidth = scopeWidth * 1.0 / bufferLength;
+  var x = 0;
+  // Background
+  canvasContext.fillStyle = 'rgb(200, 200, 200)';
+  canvasContext.fillRect(0, 0, scopeWidth, scopeHeight);
+  // fft data
+  var min = 1e6;
+  var max = -1e6;
+  for(var i = 0; i < bufferLength; i++) {
+    if (fftData[i] < min) min = fftData[i];
+    if (fftData[i] > max) max = fftData[i];
+    var v = (255. + fftData[i]) / 255;
+    canvasContext.fillStyle = 'rgb('+Math.floor(v+100)+', 0, 0)';
+    canvasContext.fillRect(x, scopeHeight, sliceWidth/2, -1 * scopeHeight * v);
+    x += sliceWidth;
+  }
+  // draw the oscilloscope trace
+  canvasContext.lineWidth = 2;
+  canvasContext.strokeStyle = 'rgb(0, 0, 0)';
+  canvasContext.beginPath();
+  x = 0;
+  for(var i = 0; i < bufferLength; i++) {
+    var v = timeData[i] / 128.0;
+    var y = v * scopeHeight/2;
+    if(i === 0) {
+      canvasContext.moveTo(x, y);
+    } else {
+      canvasContext.lineTo(x, y);
+    }
+    x += sliceWidth;
+  }
+  canvasContext.lineTo(scopeWidth, scopeHeight/2);
+  canvasContext.stroke();
+  return [Math.floor(min),Math.floor(max)];
+};
+
+
+// entry point for audio
+function audioStart(audioSource){
+  var constraints = {
+    audio: {
+      optional: [{sourceId: audioSource}]
+    }
+  };
+  navigator.getUserMedia(constraints, audioSuccessCallback, errorCallback);
+}
+</script>
+
+
+  <p>This demo uses advanced web apis to access sensors.  Not all devices and browsers are supported.</p>
+
+</div>
+
+
+</body>
+</html>
