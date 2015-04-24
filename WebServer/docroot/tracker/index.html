@@ -164,6 +164,21 @@ function matrixTable(m) {
 var orientationLabel = document.getElementById('orientation');
 orientationLabel.innerHTML = "<p> waiting for orientation events...</p>";
 
+
+var pendingAjax = undefined;
+var currentMatrix = undefined;
+
+var sendTransform = function() {
+  var action = "slicer/transform?m=" + String(currentMatrix);
+  pendingAjax = $.ajax(action)
+    .done(function() {
+      sendTransform();
+    })
+    .fail(function() {
+      alert("Could not send transform, aborting");
+    });
+}
+
 window.addEventListener('deviceorientation', function(e) {
         /* e.alpha, beta: e.beta, gamma: e.gamma */
         var orientationLabel = document.getElementById('orientation');
@@ -173,9 +188,13 @@ window.addEventListener('deviceorientation', function(e) {
         orientationLabel.innerHTML += "<p> gamma = " + e.gamma + "</p>";
         orientationLabel.innerHTML += "<p> absolute = " + e.absolute + "</p>";
 
-        m = getRotationMatrix(e.alpha, e.beta, e.gamma);
+        currentMatrix = getRotationMatrix(e.alpha, e.beta, e.gamma);
 
-        orientationLabel.innerHTML += "<p> " + matrixTable(m);
+        if (pendingAjax === undefined) {
+          sendTransform();
+        }
+
+        orientationLabel.innerHTML += "<p> " + matrixTable(currentMatrix);
 
 }, true);
 

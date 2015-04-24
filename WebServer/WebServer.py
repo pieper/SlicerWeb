@@ -278,7 +278,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       elif ACTION == "threeD":
         response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
-        response_headers += [('Content-Type','image/png')]
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volumeSelection":
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volume":
@@ -505,24 +505,17 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
-    dt = float(q['interval'][0])
-    self.d2pdt2 = 1000 * numpy.array([float(q['x'][0]), float(q['y'][0]), float(q['z'][0])])
-    if not hasattr(self,'g0'):
-      self.g0 = self.d2pdt2
-    self.d2pdt2 = self.d2pdt2 - self.g0
-    self.dpdt = self.dpdt + dt * self.d2pdt2
-    self.p = self.p + dt * self.dpdt
-    # TODO: integrate rotations
+    transformMatrix = map(float,q['m'][0].split(','))
 
-    if not hasattr(self, "idevice"):
+    if not hasattr(self, "trackingDevice"):
       """ set up the mrml parts or use existing """
-      nodes = slicer.mrmlScene.GetNodesByName('idevice')
+      nodes = slicer.mrmlScene.GetNodesByName('trackingDevice')
       if nodes.GetNumberOfItems() > 0:
-        self.idevice = nodes.GetItemAsObject(0)
+        self.trackingDevice = nodes.GetItemAsObject(0)
         nodes = slicer.mrmlScene.GetNodesByName('tracker')
         self.tracker = nodes.GetItemAsObject(0)
       else:
-        # idevice cursor
+        # trackingDevice cursor
         self.cube = vtk.vtkCubeSource()
         self.cube.SetXLength(30)
         self.cube.SetYLength(70)
@@ -532,32 +525,28 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         self.modelDisplay = slicer.vtkMRMLModelDisplayNode()
         self.modelDisplay.SetColor(1,1,0) # yellow
         slicer.mrmlScene.AddNode(self.modelDisplay)
-        self.modelDisplay.SetPolyData(self.cube.GetOutputPort())
+        # self.modelDisplay.SetPolyData(self.cube.GetOutputPort())
         # Create model node
-        self.idevice = slicer.vtkMRMLModelNode()
-        self.idevice.SetScene(slicer.mrmlScene)
-        self.idevice.SetName("idevice")
-        self.idevice.SetAndObservePolyData(self.cube.GetOutputPort())
-        self.idevice.SetAndObserveDisplayNodeID(self.modelDisplay.GetID())
-        slicer.mrmlScene.AddNode(self.idevice)
+        self.trackingDevice = slicer.vtkMRMLModelNode()
+        self.trackingDevice.SetScene(slicer.mrmlScene)
+        self.trackingDevice.SetName("trackingDevice")
+        self.trackingDevice.SetAndObservePolyData(self.cube.GetOutputDataObject(0))
+        self.trackingDevice.SetAndObserveDisplayNodeID(self.modelDisplay.GetID())
+        slicer.mrmlScene.AddNode(self.trackingDevice)
         # tracker
         self.tracker = slicer.vtkMRMLLinearTransformNode()
         self.tracker.SetName('tracker')
         slicer.mrmlScene.AddNode(self.tracker)
-        self.idevice.SetAndObserveTransformNodeID(self.tracker.GetID())
+        self.trackingDevice.SetAndObserveTransformNodeID(self.tracker.GetID())
     m = self.tracker.GetMatrixTransformToParent()
     m.Identity()
-    up = numpy.zeros(3)
-    up[2] = 1
-    d = self.d2pdt2
-    dd = d / numpy.sqrt(numpy.dot(d,d))
-    xx = numpy.cross(dd,up)
-    yy = numpy.cross(dd,xx)
     for row in xrange(3):
-      m.SetElement(row,0, dd[row])
-      m.SetElement(row,1, xx[row])
-      m.SetElement(row,2, yy[row])
-      #m.SetElement(row,3, self.p[row])
+      for column in xrange(3):
+        m.SetElement(row,column, transformMatrix[3*row+column])
+        m.SetElement(row,column, transformMatrix[3*row+column])
+        m.SetElement(row,column, transformMatrix[3*row+column])
+        #m.SetElement(row,column, transformMatrix[3*row+column])
+    self.tracker.SetMatrixTransformToParent(m)
 
     return ( "got it" )
 
