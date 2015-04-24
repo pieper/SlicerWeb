@@ -167,16 +167,24 @@ orientationLabel.innerHTML = "<p> waiting for orientation events...</p>";
 
 var pendingAjax = undefined;
 var currentMatrix = undefined;
+var currentEulers = undefined;
+var useEulers = true;
 
+// used if sending rotation matrix
 var sendTransform = function() {
-  var action = "slicer/transform?m=" + String(currentMatrix);
+  if (useEulers) {
+    var action = "slicer/eulers?angles=" + String(currentEulers);
+  } else {
+    var action = "slicer/transform?m=" + String(currentMatrix);
+  }
+
   pendingAjax = $.ajax(action)
-    .done(function() {
-      sendTransform();
-    })
-    .fail(function() {
-      alert("Could not send transform, aborting");
-    });
+  .done(function() {
+    sendTransform();
+  })
+  .fail(function() {
+    alert("Could not send transform, aborting");
+  });
 }
 
 window.addEventListener('deviceorientation', function(e) {
@@ -187,6 +195,8 @@ window.addEventListener('deviceorientation', function(e) {
         orientationLabel.innerHTML += "<p> beta = " + e.beta + "</p>";
         orientationLabel.innerHTML += "<p> gamma = " + e.gamma + "</p>";
         orientationLabel.innerHTML += "<p> absolute = " + e.absolute + "</p>";
+
+        currentEulers = [e.alpha, e.beta, e.gamma];
 
         currentMatrix = getRotationMatrix(e.alpha, e.beta, e.gamma);
 

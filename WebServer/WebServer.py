@@ -279,6 +279,8 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         response_headers += [('Content-Type','image/png')]
       elif ACTION == "transform":
         response_headers += [('Content-Type','text/plain')]
+      elif ACTION == "eulers":
+        response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volumeSelection":
         response_headers += [('Content-Type','text/plain')]
       elif ACTION == "volume":
@@ -393,6 +395,9 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       if cmd.find('/transform') == 0:
         self.logMessage ("got request for transform")
         return (self.transform(cmd))
+      if cmd.find('/eulers') == 0:
+        self.logMessage ("got request for eulers")
+        return (self.eulers(cmd))
       if cmd.find('/volumeSelection') == 0:
         self.logMessage ("got request for volumeSelection")
         return (self.volumeSelection(cmd))
@@ -494,19 +499,7 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
 
     return ( "no matching preset" )
 
-  def transform(self,cmd):
-    if not hasattr(self,'p'):
-      self.p = numpy.zeros(3)
-      self.dpdt = numpy.zeros(3)
-      self.d2pdt2 = numpy.zeros(3)
-      self.o = numpy.zeros(3)
-      self.dodt = numpy.zeros(3)
-      self.d2odt2 = numpy.zeros(3)
-    p = urlparse.urlparse(cmd)
-    q = urlparse.parse_qs(p.query)
-    self.logMessage (q)
-    transformMatrix = map(float,q['m'][0].split(','))
-
+  def setupMRMLTracking(self):
     if not hasattr(self, "trackingDevice"):
       """ set up the mrml parts or use existing """
       nodes = slicer.mrmlScene.GetNodesByName('trackingDevice')
@@ -538,6 +531,29 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
         self.tracker.SetName('tracker')
         slicer.mrmlScene.AddNode(self.tracker)
         self.trackingDevice.SetAndObserveTransformNodeID(self.tracker.GetID())
+
+  def eulers(self,cmd):
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    self.logMessage (q)
+    alpha,beta,gamma = map(float,q['angles'][0].split(','))
+
+    self.setupMRMLTracking()
+    transform = vtk.vtkTransform()
+    transform.RotateZ(alpha)
+    transform.RotateX(beta)
+    transform.RotateY(gamma)
+    self.tracker.SetMatrixTransformToParent(transform.GetMatrix())
+
+    return ( "got it" )
+
+  def transform(self,cmd):
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    self.logMessage (q)
+    transformMatrix = map(float,q['m'][0].split(','))
+
+    self.setupMRMLTracking()
     m = self.tracker.GetMatrixTransformToParent()
     m.Identity()
     for row in xrange(3):
