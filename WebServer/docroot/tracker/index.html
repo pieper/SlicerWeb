@@ -18,6 +18,7 @@
 
 <h2>Be sure to approve requests for the camera(s) and microphone(s).</h2>
 
+<img src="../images/3DSlicer-DesktopIcon.png"></img>
 
 <span id="graphics"></span>
 <div id="canvases"></div>
@@ -34,33 +35,41 @@
 </script>
 
 <script id="vertexShader" type="x-shader/x-vertex">
-  attribute vec4 position;
 
-  void main(void) {
-    vec4 newPosition = position;
-    newPosition.x += .3;
-    gl_Position = newPosition;
-  }
+attribute vec4 position;
+
+varying vec2 textureCoordinate;
+
+void main(void) {
+  vec4 newPosition = position;
+  newPosition.x += .3;
+  gl_Position = newPosition;
+  textureCoordinate.x = position.x;
+  textureCoordinate.y = position.y;
+}
 </script>
 
 <script id="fragmentShader" type="x-shader/x-fragment">
+
 #ifdef GL_ES
 precision highp float;
 #endif
 
 uniform sampler2D tex0;
 
-  void main(void) {
+varying vec2 textureCoordinate;
 
-    vec2 textureCoordinate = vec2(gl_FragCoord.x, gl_FragCoord.y);
-    vec3 rgb = texture2D(tex0, textureCoordinate).xyz;
+void main(void) {
 
-    //gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+  //vec2 textureCoordinate = vec2(gl_FragCoord.x/200., gl_FragCoord.y/200.);
+  vec3 rgb = texture2D(tex0, textureCoordinate).xyz;
 
-    gl_FragColor = vec4(gl_FragCoord.x/255., gl_FragCoord.y/255., 1.0, 1.0);
+  //gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
 
-    gl_FragColor = vec4(rgb, 1.0);
-  }
+  gl_FragColor = vec4(gl_FragCoord.x/255., gl_FragCoord.y/255., 1.0, 1.0);
+
+  gl_FragColor = vec4(rgb, 1.0);
+}
 </script>
 
 // Now, the rendering code
