@@ -11,19 +11,158 @@
 
 <body>
 
-<div id='videos'> </div>
 
 <script> /* getSources inspired from https://github.com/samdutton/simpl/tree/master/getusermedia */ </script>
 
-<div id="container">
+<h1>Data for tracking</h1>
 
-  <h1>Data for tracking</h1>
+<h2>Be sure to approve requests for the camera(s) and microphone(s).</h2>
 
-  <h2>Be sure to approve requests for the camera(s) and microphone(s).</h2>
 
-<span id="video"></span>
+<span id="graphics"></span>
+<div id="canvases"></div>
 
 <script>
+//
+// This is the graphics part.
+// This is responsible for grabbing video frames as fast as possible
+// from the video part and putting them in texture.
+// Then calculating an estimate of the camera offset that generated the frames.
+//
+
+// first, the shaders
+</script>
+
+<script id="vertexShader" type="x-shader/x-vertex">
+  attribute vec4 position;
+
+  void main(void) {
+    vec4 newPosition = position;
+    newPosition.x += .3;
+    gl_Position = newPosition;
+  }
+</script>
+
+<script id="fragmentShader" type="x-shader/x-fragment">
+#ifdef GL_ES
+precision highp float;
+#endif
+
+uniform sampler2D tex0;
+
+  void main(void) {
+
+    vec2 textureCoordinate = vec2(gl_FragCoord.x, gl_FragCoord.y);
+    vec3 rgb = texture2D(tex0, textureCoordinate).xyz;
+
+    //gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
+
+    gl_FragColor = vec4(gl_FragCoord.x/255., gl_FragCoord.y/255., 1.0, 1.0);
+
+    gl_FragColor = vec4(rgb, 1.0);
+  }
+</script>
+
+// Now, the rendering code
+<script>
+
+// add a canvas
+var canvasIndex = 1;
+var canvasID = "canvas"+String(canvasIndex);
+$('#canvases').append('<canvas id='+canvasID+'></canvas><p>'+canvasID+'</p>');
+var canvas = document.querySelector('#'+canvasID);
+
+// set up webgl
+var gl = canvas.getContext('webgl');
+gl.clearColor(0.0, 0.0, 0.0, 1.0); // black, fully opaque
+gl.enable(gl.DEPTH_TEST);
+gl.depthFunc(gl.LEQUAL); // Near things obscure far things
+
+// create the draw buffer
+var squareVertices = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, squareVertices);
+var vertices = [
+  1.0,  1.0,  0.0,
+  -1.0, 1.0,  0.0,
+  1.0,  -1.0, 0.0,
+  -1.0, -1.0, 0.0
+];
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+// create the texture
+var textureImage = new Image();
+var texture = gl.createTexture();
+var loadTexture = function() {
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureImage);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+  render();
+};
+
+
+
+// create the program and shaders
+var glProgram = gl.createProgram();
+var vertexShader = gl.createShader(gl.VERTEX_SHADER);
+gl.shaderSource(vertexShader, document.getElementById("vertexShader").innerHTML);
+gl.compileShader(vertexShader);
+if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
+  alert('Could not compile vertexShader');
+}
+var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+gl.shaderSource(fragmentShader, document.getElementById("fragmentShader").innerHTML);
+gl.compileShader(fragmentShader);
+if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
+  alert('Could not compile fragmentShader');
+}
+gl.attachShader(glProgram, vertexShader);
+gl.deleteShader(vertexShader);
+gl.attachShader(glProgram, fragmentShader);
+gl.deleteShader(fragmentShader);
+gl.linkProgram(glProgram);
+
+gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "position") );
+
+
+function render() {
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+  gl.useProgram(glProgram);
+
+  // the position attribute
+  var positionLocation = gl.getAttribLocation(glProgram, "position");
+  gl.vertexAttribPointer( positionLocation, 3, gl.FLOAT, false, 0, 0);
+
+  // the texture - TBD
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.uniform1i(gl.getUniformLocation(glProgram, "tex0"), 0);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, squareVertices);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, /*4*/ 3);
+}
+
+textureImage.src = "../images/3DSlicer-DesktopIcon.png";
+textureImage.onload = loadTexture;
+
+</script>
+
+
+<span id="video"></span>
+<div id='videos'> </div>
+<div id='videoTime'> </div>
+<script>
+//
+// This is the video part - it is responsible for collecting
+// frames and putting them into a canvas.
+//
 
 'use strict';
 
@@ -73,13 +212,19 @@ function videoSuccessCallback(stream) {
   $('#videos').append('<video autoplay id='+videoID+'></video><p>'+videoID+'</p>');
   var videoElement = document.querySelector('#video1');
   videoElement.src = window.URL.createObjectURL(stream);
-  videoElement.play();
   videoElement.addEventListener('canplay', function(ev){
     var width = 200;
     var height = videoElement.videoHeight / (videoElement.videoWidth/width);
     videoElement.setAttribute('width', width);
     videoElement.setAttribute('height', height);
+    canvas.setAttribute('width', width);
+    canvas.setAttribute('height', height);
   }, false);
+  var videoTime = document.getElementById('videoTime');
+  videoElement.addEventListener('timeupdate', function() {
+    videoTime.innerHTML = "<p>Time: " + videoElement.currentTime + "</p>";
+  });
+  videoElement.play();
 }
 
 // or error out
@@ -100,14 +245,26 @@ function videoStart(videoSource){
   navigator.getUserMedia(constraints, videoSuccessCallback, errorCallback);
 }
 
+// end of video section
 </script>
+
 
 
 <span id="orientation"></span>
 
 <script>
 
+//
+// The orientation api provides an approximate orientation of the device, but
+// may not be stable enough to use for tracking.  The X and Y rotations (with respect
+// to the screen seem very quick and stable (gyro-based) but the Z rotation
+// appears to be poor (based on accelerometer and magnetometer readings).
+//
+
+
+//
 // from http://w3c.github.io/deviceorientation/spec-source-orientation.html#deviceorientation
+//
 
 var degtorad = Math.PI / 180; // Degree-to-Radian conversion
 
@@ -208,12 +365,13 @@ window.addEventListener('deviceorientation', function(e) {
 
 }, true);
 
+// end of orientation section
 </script>
 
 
-  <p>This demo uses advanced web apis to access sensors.  Not all devices and browsers are supported.</p>
-
-</div>
+<p>
+This demo uses advanced web apis to access sensors.  Not all devices and browsers are supported.
+</p>
 
 
 </body>
