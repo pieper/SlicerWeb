@@ -36,16 +36,18 @@
 
 <script id="vertexShader" type="x-shader/x-vertex">
 
+uniform vec2 dimensions;
+
 attribute vec4 position;
 
 varying vec2 textureCoordinate;
 
 void main(void) {
   vec4 newPosition = position;
-  newPosition.x += .3;
+  newPosition.x += .0;
   gl_Position = newPosition;
   textureCoordinate.x = position.x;
-  textureCoordinate.y = position.y;
+  textureCoordinate.y = position.y * (dimensions.y / dimensions.x);
 }
 </script>
 
@@ -61,40 +63,45 @@ varying vec2 textureCoordinate;
 
 void main(void) {
 
-  //vec2 textureCoordinate = vec2(gl_FragCoord.x/200., gl_FragCoord.y/200.);
-  vec3 rgb = texture2D(tex0, textureCoordinate).xyz;
+  vec4 rgba = texture2D(tex0, textureCoordinate);
 
-  //gl_FragColor = vec4(1.0, 1.0, 0.0, 1.0);
-
-  gl_FragColor = vec4(gl_FragCoord.x/255., gl_FragCoord.y/255., 1.0, 1.0);
-
-  gl_FragColor = vec4(rgb, 1.0);
+  gl_FragColor = rgba;
 }
 </script>
 
-// Now, the rendering code
 <script>
+//
+// Now, the rendering code
+//
 
-// add a canvas
-var canvasIndex = 1;
-var canvasID = "canvas"+String(canvasIndex);
-$('#canvases').append('<canvas id='+canvasID+'></canvas><p>'+canvasID+'</p>');
-var canvas = document.querySelector('#'+canvasID);
+// add a canvas for 2D and one for 3D
+var canvasIndex = 2;
+while (canvasIndex <= 3) {
+  var canvasID = "canvas"+String(canvasIndex) + "D";
+  $('#canvases').append('<canvas id='+canvasID+'></canvas><p>'+canvasID+'</p>');
+  canvasIndex += 1;
+}
+var canvas2D = document.querySelector('#canvas2D');
+var canvas3D = document.querySelector('#canvas3D');
+</script>
 
+<script>
+//
 // set up webgl
-var gl = canvas.getContext('webgl');
+//
+var gl = canvas3D.getContext('webgl');
 gl.clearColor(0.0, 0.0, 0.0, 1.0); // black, fully opaque
 gl.enable(gl.DEPTH_TEST);
 gl.depthFunc(gl.LEQUAL); // Near things obscure far things
 
-// create the draw buffer
+// create the vertex buffer
 var squareVertices = gl.createBuffer();
 gl.bindBuffer(gl.ARRAY_BUFFER, squareVertices);
 var vertices = [
-  1.0,  1.0,  0.0,
-  -1.0, 1.0,  0.0,
-  1.0,  -1.0, 0.0,
-  -1.0, -1.0, 0.0
+   1.0,  1.0,  0.0,
+  -1.0,  1.0,  0.0,
+   1.0, -1.0,  0.0,
+  -1.0, -1.0,  0.0
 ];
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
 
@@ -106,17 +113,18 @@ var loadTexture = function() {
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureImage);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
-  //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
-  render();
+
+  render3D(); // TODO: move this to requestAnimationFrame
 };
 
 
 
+//
 // create the program and shaders
+//
 var glProgram = gl.createProgram();
 var vertexShader = gl.createShader(gl.VERTEX_SHADER);
 gl.shaderSource(vertexShader, document.getElementById("vertexShader").innerHTML);
@@ -138,9 +146,10 @@ gl.linkProgram(glProgram);
 
 gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "position") );
 
+var dimensions = [200.,300.];
 
-function render() {
-  gl.viewport(0, 0, canvas.width, canvas.height);
+function render3D() {
+  gl.viewport(0, 0, canvas3D.width, canvas3D.height);
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
   gl.useProgram(glProgram);
@@ -149,13 +158,16 @@ function render() {
   var positionLocation = gl.getAttribLocation(glProgram, "position");
   gl.vertexAttribPointer( positionLocation, 3, gl.FLOAT, false, 0, 0);
 
-  // the texture - TBD
+  // the texture
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.uniform1i(gl.getUniformLocation(glProgram, "tex0"), 0);
 
+  // dimensions
+  gl.uniform2f(gl.getUniformLocation(glProgram, "dimensions"), dimensions[0], dimensions[1]);
+
   gl.bindBuffer(gl.ARRAY_BUFFER, squareVertices);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, /*4*/ 3);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
 textureImage.src = "../images/3DSlicer-DesktopIcon.png";
@@ -226,8 +238,13 @@ function videoSuccessCallback(stream) {
     var height = videoElement.videoHeight / (videoElement.videoWidth/width);
     videoElement.setAttribute('width', width);
     videoElement.setAttribute('height', height);
-    canvas.setAttribute('width', width);
-    canvas.setAttribute('height', height);
+    canvas3D.setAttribute('width', width);
+    canvas3D.setAttribute('height', height);
+    dimensions[0] = width;
+    dimensions[1] = height;
+
+    render3D();
+
   }, false);
   var videoTime = document.getElementById('videoTime');
   videoElement.addEventListener('timeupdate', function() {
@@ -257,6 +274,31 @@ function videoStart(videoSource){
 // end of video section
 </script>
 
+
+<script>
+//
+// the canvas2D section
+// -- draws the video frame into the canvas
+// -- copies the drawn canvas into the texture
+//
+
+var context2D = canvas2D.getContext('2d');
+var videoElement = null;
+
+var animationFrame = function() {
+  if (videoCount > 0) {
+    if (!videoElement) {
+      videoElement = document.querySelector('#video1');
+    }
+    context2D.drawImage(videoElement, 0, 0, videoElement.width, videoElement.height);
+  }
+  requestAnimationFrame(animationFrame);
+}
+requestAnimationFrame(animationFrame);
+
+
+
+</script>
 
 
 <span id="orientation"></span>
