@@ -291,6 +291,8 @@ var animationFrame = function() {
       videoElement = document.querySelector('#video1');
     }
     context2D.drawImage(videoElement, 0, 0, videoElement.width, videoElement.height);
+    var url = canvas2D.toDataURL('image/png');
+    textureImage.src = url;
   }
   requestAnimationFrame(animationFrame);
 }
