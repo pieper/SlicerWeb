@@ -18,7 +18,7 @@
 
 <h2>Be sure to approve requests for the camera(s) and microphone(s).</h2>
 
-<img src="../images/3DSlicer-DesktopIcon.png"></img>
+<img src="../images/apple-keyboard.jpg" height=300></img>
 
 <span id="graphics"></span>
 <div id="canvases"></div>
@@ -74,14 +74,9 @@ void main(void) {
 // Now, the rendering code
 //
 
-// add a canvas for 2D and one for 3D
-var canvasIndex = 2;
-while (canvasIndex <= 3) {
-  var canvasID = "canvas"+String(canvasIndex) + "D";
-  $('#canvases').append('<canvas id='+canvasID+'></canvas><p>'+canvasID+'</p>');
-  canvasIndex += 1;
-}
-var canvas2D = document.querySelector('#canvas2D');
+// add a canvas for 3D
+var canvasID = "canvas3D";
+$('#canvases').append('<canvas id=canvas3D></canvas><p>Rendered View</p>');
 var canvas3D = document.querySelector('#canvas3D');
 </script>
 
@@ -116,7 +111,6 @@ var loadTexture = function() {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
-
   render3D(); // TODO: move this to requestAnimationFrame
 };
 
@@ -170,7 +164,8 @@ function render3D() {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
-textureImage.src = "../images/3DSlicer-DesktopIcon.png";
+//textureImage.src = "../images/3DSlicer-DesktopIcon.png";
+textureImage.src = "../images/apple-keyboard.jpg";
 textureImage.onload = loadTexture;
 
 </script>
@@ -243,7 +238,7 @@ function videoSuccessCallback(stream) {
     dimensions[0] = width;
     dimensions[1] = height;
 
-    render3D();
+    render3D(); // initial render
 
   }, false);
   var videoTime = document.getElementById('videoTime');
@@ -276,23 +271,25 @@ function videoStart(videoSource){
 
 
 <script>
-//
-// the canvas2D section
-// -- draws the video frame into the canvas
-// -- copies the drawn canvas into the texture
-//
-
-var context2D = canvas2D.getContext('2d');
 var videoElement = null;
 
+// the render loop to move the video into texture
 var animationFrame = function() {
   if (videoCount > 0) {
     if (!videoElement) {
       videoElement = document.querySelector('#video1');
+    } else {
+      if (videoElement.videoHeight) { // only defined when loaded
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
+        render3D();
+      }
     }
-    context2D.drawImage(videoElement, 0, 0, videoElement.width, videoElement.height);
-    var url = canvas2D.toDataURL('image/png');
-    textureImage.src = url;
   }
   requestAnimationFrame(animationFrame);
 }
