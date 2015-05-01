@@ -19,7 +19,9 @@
 
 <h2>Be sure to approve requests for the camera(s) and microphone(s).</h2>
 
-<img src="../images/apple-keyboard.jpg" height=300></img>
+<img src="../images/apple-keyboard.jpg" width=150></img>
+<img src="../images/apple-keyboard2.jpg" width=150></img>
+<img src="../images/apple-keyboard3.jpg" width=150></img>
 
 <span id="graphics"></span>
 <div id="canvases"></div>
@@ -27,9 +29,7 @@
 <script>
 //
 // This is the graphics part.
-// This is responsible for grabbing video frames as fast as possible
-// from the video part and putting them in texture.
-// Then calculating an estimate of the camera offset that generated the frames.
+// Responsible for calculating an estimate of the camera offset that generated the frames.
 //
 
 // first, the shaders
@@ -90,28 +90,31 @@ gl.clearColor(0.0, 0.0, 0.0, 1.0); // black, fully opaque
 gl.enable(gl.DEPTH_TEST);
 gl.depthFunc(gl.LEQUAL); // Near things obscure far things
 
-// create the vertex buffer
-var squareVertices = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, squareVertices);
-var vertices = [
-   1.0,  1.0,  0.0,
-  -1.0,  1.0,  0.0,
-   1.0, -1.0,  0.0,
-  -1.0, -1.0,  0.0
+// create the keyboard vertex buffer
+var keyboardBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, keyboardBuffer);
+var keyboardOrigin = [0., 0.];
+var keyboardDimensions = [280., 130.];
+var keyboardVertices = [
+  keyboardOrigin[0], keyboardOrigin[1], 0.0,
+  keyboardOrigin[0]+keyboardDimensions[0], keyboardOrigin[1], 0.0,
+  keyboardOrigin[0], keyboardOrigin[1]+keyboardDimensions[1], 0.0,
+  keyboardOrigin[0]+keyboardDimensions[0], keyboardOrigin[1]+keyboardDimensions[1], 0.0,
 ];
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(keyboardVertices), gl.STATIC_DRAW);
 
-// create the texture
-var textureImage = new Image();
+// create the keyboard texture
+var keyboardTextureImage = new Image();
 var texture = gl.createTexture();
 var loadTexture = function() {
   gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, textureImage);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, keyboardTextureImage);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
+  dimensions = [keyboardTextureImage.width,keyboardTextureImage.height];
   render3D(); // TODO: move this to requestAnimationFrame
 };
 
@@ -144,7 +147,10 @@ gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "position") );
 var dimensions = [200.,300.];
 
 function render3D() {
-  gl.viewport(0, 0, canvas3D.width, canvas3D.height);
+  var halfWidth = canvas3D.width / 2.;
+  var halfHeight = canvas3D.height / 2.;
+  gl.viewport(-50, -50, canvas3D.width, canvas3D.height);
+  gl.viewport(-halfWidth, -halfHeight, 2.* canvas3D.width, 2.* canvas3D.height);
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
   gl.useProgram(glProgram);
@@ -161,13 +167,12 @@ function render3D() {
   // dimensions
   gl.uniform2f(gl.getUniformLocation(glProgram, "dimensions"), dimensions[0], dimensions[1]);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, squareVertices);
+  gl.bindBuffer(gl.ARRAY_BUFFER, keyboardBuffer);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
-//textureImage.src = "../images/3DSlicer-DesktopIcon.png";
-textureImage.src = "../images/apple-keyboard.jpg";
-textureImage.onload = loadTexture;
+keyboardTextureImage.src = "../images/apple-keyboard.jpg";
+keyboardTextureImage.onload = loadTexture;
 
 </script>
 
@@ -236,8 +241,6 @@ function videoSuccessCallback(stream) {
     videoElement.setAttribute('height', height);
     canvas3D.setAttribute('width', width);
     canvas3D.setAttribute('height', height);
-    dimensions[0] = width;
-    dimensions[1] = height;
 
     render3D(); // initial render
 
