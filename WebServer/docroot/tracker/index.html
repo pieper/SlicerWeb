@@ -5,7 +5,7 @@
   <title>Browser tracking for mobile</title>
 
   <link rel="stylesheet" href="../stylesheets/application.css" />
-  <script src='http://code.jquery.com/jquery-2.0.3.min.js'></script>
+  <script src='jquery-1.11.0.min.js'></script>
   <script src='gl-matrix.js'></script>
 
 </head>
@@ -37,18 +37,17 @@
 
 <script id="vertexShader" type="x-shader/x-vertex">
 
-uniform vec2 dimensions;
+uniform vec2 textureDimensions;
 
 attribute vec4 position;
 
 varying vec2 textureCoordinate;
 
 void main(void) {
-  vec4 newPosition = position;
-  newPosition.x += .0;
-  gl_Position = newPosition;
+  gl_Position = position;
   textureCoordinate.x = position.x;
-  textureCoordinate.y = position.y * (dimensions.y / dimensions.x);
+  //textureCoordinate.y = position.y * (textureDimensions.y / textureDimensions.x);
+  textureCoordinate.y = position.y;
 }
 </script>
 
@@ -104,18 +103,20 @@ var keyboardVertices = [
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(keyboardVertices), gl.STATIC_DRAW);
 
 // create the keyboard texture
+var textureDimensions = [200.,300.];
 var keyboardTextureImage = new Image();
 var texture = gl.createTexture();
 var loadTexture = function() {
   gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, keyboardTextureImage);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
-  dimensions = [keyboardTextureImage.width,keyboardTextureImage.height];
-  render3D(); // TODO: move this to requestAnimationFrame
+  textureDimensions = [keyboardTextureImage.width,keyboardTextureImage.height];
+  render3D(); // Render once with default texture
 };
 
 
@@ -144,13 +145,12 @@ gl.linkProgram(glProgram);
 
 gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "position") );
 
-var dimensions = [200.,300.];
 
 function render3D() {
   var halfWidth = canvas3D.width / 2.;
   var halfHeight = canvas3D.height / 2.;
   gl.viewport(-50, -50, canvas3D.width, canvas3D.height);
-  gl.viewport(-halfWidth, -halfHeight, 2.* canvas3D.width, 2.* canvas3D.height);
+  gl.viewport(-halfWidth, -halfHeight, canvas3D.width, canvas3D.height);
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
   gl.useProgram(glProgram);
@@ -164,8 +164,8 @@ function render3D() {
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.uniform1i(gl.getUniformLocation(glProgram, "tex0"), 0);
 
-  // dimensions
-  gl.uniform2f(gl.getUniformLocation(glProgram, "dimensions"), dimensions[0], dimensions[1]);
+  // textureDimensions
+  gl.uniform2f(gl.getUniformLocation(glProgram, "textureDimensions"), textureDimensions[0], textureDimensions[1]);
 
   gl.bindBuffer(gl.ARRAY_BUFFER, keyboardBuffer);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -199,6 +199,7 @@ navigator.getUserMedia = navigator.getUserMedia ||
 // seems only one video stream can be active at a time, at least
 // on chrome on android so we pick the second video source
 var skipFirstVideo = true;
+var skipFirstVideo = false;
 
 // when sources are found
 function gotSources(sourceInfos) {
@@ -424,7 +425,7 @@ window.addEventListener('deviceorientation', function(e) {
 
 
 <p>
-This demo uses advanced web apis to access sensors.  Not all devices and browsers are supported.
+This demo uses advanced web APIs to access sensors.  Not all devices and browsers are supported.
 </p>
 
 
