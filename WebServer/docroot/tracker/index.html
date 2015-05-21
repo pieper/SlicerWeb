@@ -37,34 +37,82 @@
 
 <script id="vertexShader" type="x-shader/x-vertex">
 
-uniform vec2 textureDimensions;
+precision highp float;
 
-attribute vec4 position;
+attribute vec3 coordinate;
+attribute vec2 textureCoordinate;
 
-varying vec2 textureCoordinate;
+varying vec2 varyingTextureCoordinate;
+
+// helpers
+// handy refernce: http://www.3dgep.com/understanding-the-view-matrix/
+mat4 perspective (float fovy, float aspect, float near, float far) {
+    float f = 1.0 / tan(fovy / 2.);
+    float nf = 1. / (near - far);
+    mat4 perspectiveMatrix = mat4(1.);
+    perspectiveMatrix[0][0] = f / aspect;
+    perspectiveMatrix[1][1] = f;
+    perspectiveMatrix[2][2] = (far + near) * nf;
+    perspectiveMatrix[2][3] = (2. * far * near) * nf;
+    perspectiveMatrix[3][3] = 0.;
+    return (perspectiveMatrix);
+}
+
+mat4 lookAt (vec3 eye, vec3 center, vec3 up) {
+  vec3 x, y, z, w;
+  float len;
+  vec3 direction = normalize(eye - center);
+  vec3 right = normalize(cross(direction,up));
+  vec3 actualUp = normalize(cross(direction,right));
+
+  mat4 viewMatrix = mat4(1);
+  viewMatrix[0] = vec4(right,0);
+  viewMatrix[1] = vec4(actualUp,0);
+  viewMatrix[2] = vec4(direction,0);
+  viewMatrix[3][0] = -dot(right,eye);
+  viewMatrix[3][1] = -dot(actualUp,eye);
+  viewMatrix[3][2] = -dot(direction,eye);
+
+  return (viewMatrix);
+}
 
 void main(void) {
-  gl_Position = position;
-  textureCoordinate.x = position.x;
-  //textureCoordinate.y = position.y * (textureDimensions.y / textureDimensions.x);
-  textureCoordinate.y = position.y;
+
+  mat4 viewMatrix = lookAt(vec3(0, 50, 55), vec3(5, 5, 0), vec3(0, 1, 0));
+
+  mat4 perspectiveMatrix = perspective(radians(30.), 1., 1., 100.);
+
+  gl_Position = perspectiveMatrix * viewMatrix * vec4(coordinate,1.);
+
+  varyingTextureCoordinate = vec2(coordinate.x, coordinate.y);
+  varyingTextureCoordinate = textureCoordinate;
 }
 </script>
 
+<script>
+var m = mat4.create();
+mat4.perspective(m, 3.14159/4, 1., 1, 100000);
+console.log(m);
+mat4.lookAt(m, [5,5,20], [5,5,0], [0,1,0]);
+console.log(m);
+</script>
+
 <script id="fragmentShader" type="x-shader/x-fragment">
-
-#ifdef GL_ES
-// TODO: this is deprecated
 precision highp float;
-#endif
 
-uniform sampler2D tex0;
+uniform sampler2D referenceTextureSampler;
+uniform sampler2D videoTextureSampler;
 
-varying vec2 textureCoordinate;
+varying vec2 varyingTextureCoordinate;
 
 void main(void) {
 
-  vec4 rgba = texture2D(tex0, textureCoordinate);
+  vec4 referenceRGBA = texture2D(referenceTextureSampler, varyingTextureCoordinate);
+  vec4 videoRGBA = texture2D(videoTextureSampler, varyingTextureCoordinate);
+
+  //vec4 rgba = abs(referenceRGBA - videoRGBA);
+  vec4 rgba = 0.5 * (referenceRGBA + videoRGBA);
+  rgba.a = 1.;
 
   gl_FragColor = rgba;
 }
@@ -82,6 +130,7 @@ var canvas3D = document.querySelector('#canvas3D');
 </script>
 
 <script>
+'use strict'
 //
 // set up webgl
 //
@@ -91,36 +140,49 @@ gl.enable(gl.DEPTH_TEST);
 gl.depthFunc(gl.LEQUAL); // Near things obscure far things
 
 // create the keyboard vertex buffer
-var keyboardBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, keyboardBuffer);
-var keyboardOrigin = [0., 0.];
+var keyboardOrigin = [-100., -100.];
 var keyboardDimensions = [280., 130.];
+//var keyboardOrigin = [-1., -1.];
+//var keyboardDimensions = [2., 2.];
 var keyboardVertices = [
   keyboardOrigin[0], keyboardOrigin[1], 0.0,
   keyboardOrigin[0]+keyboardDimensions[0], keyboardOrigin[1], 0.0,
   keyboardOrigin[0], keyboardOrigin[1]+keyboardDimensions[1], 0.0,
   keyboardOrigin[0]+keyboardDimensions[0], keyboardOrigin[1]+keyboardDimensions[1], 0.0,
 ];
+var keyboardCoordinatesBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, keyboardCoordinatesBuffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(keyboardVertices), gl.STATIC_DRAW);
 
-// create the keyboard texture
-var textureDimensions = [200.,300.];
-var keyboardTextureImage = new Image();
-var texture = gl.createTexture();
-var loadTexture = function() {
-  gl.bindTexture(gl.TEXTURE_2D, texture);
+var keyboardTextureCoordinates = [ 0, 0,  1, 0,  0, 1,  1, 1 ];
+var keyboardTexureCoordinatesBuffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, keyboardTexureCoordinatesBuffer);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(keyboardTextureCoordinates), gl.STATIC_DRAW);
+
+// create the reference texture and video texture
+var referenceTextureImage = new Image();
+var referenceTexture = gl.createTexture();
+var setupReferenceTexture = function() {
+  gl.bindTexture(gl.TEXTURE_2D, referenceTexture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, keyboardTextureImage);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, referenceTextureImage);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.bindTexture(gl.TEXTURE_2D, null);
-  textureDimensions = [keyboardTextureImage.width,keyboardTextureImage.height];
-  render3D(); // Render once with default texture
+  var textureDimensions = [referenceTextureImage.width,referenceTextureImage.height];
 };
-
-
+var videoTexture = gl.createTexture();
+var setupVideoTexture = function() {
+  gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+  gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindTexture(gl.TEXTURE_2D, null);
+};
 
 //
 // create the program and shaders
@@ -131,12 +193,14 @@ gl.shaderSource(vertexShader, document.getElementById("vertexShader").innerHTML)
 gl.compileShader(vertexShader);
 if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) {
   alert('Could not compile vertexShader');
+  console.log(gl.getShaderInfoLog(vertexShader));
 }
 var fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
 gl.shaderSource(fragmentShader, document.getElementById("fragmentShader").innerHTML);
 gl.compileShader(fragmentShader);
 if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) {
   alert('Could not compile fragmentShader');
+  console.log(gl.getShaderInfoLog(fragmentShader));
 }
 gl.attachShader(glProgram, vertexShader);
 gl.deleteShader(vertexShader);
@@ -144,36 +208,42 @@ gl.attachShader(glProgram, fragmentShader);
 gl.deleteShader(fragmentShader);
 gl.linkProgram(glProgram);
 
-gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "position") );
 
 
+// render a frame
 function render3D() {
-  var halfWidth = canvas3D.width / 2.;
-  var halfHeight = canvas3D.height / 2.;
-  gl.viewport(-50, -50, canvas3D.width, canvas3D.height);
-  gl.viewport(-halfWidth, -halfHeight, canvas3D.width, canvas3D.height);
+  gl.viewport(0, 0, canvas3D.width, canvas3D.height);
   gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
   gl.useProgram(glProgram);
 
-  // the position attribute
-  var positionLocation = gl.getAttribLocation(glProgram, "position");
-  gl.vertexAttribPointer( positionLocation, 3, gl.FLOAT, false, 0, 0);
-
-  // the texture
+  // the referenceTexture
   gl.activeTexture(gl.TEXTURE0);
-  gl.bindTexture(gl.TEXTURE_2D, texture);
-  gl.uniform1i(gl.getUniformLocation(glProgram, "tex0"), 0);
+  gl.bindTexture(gl.TEXTURE_2D, referenceTexture);
+  gl.uniform1i(gl.getUniformLocation(glProgram, "referenceTextureSampler"), 0);
 
-  // textureDimensions
-  gl.uniform2f(gl.getUniformLocation(glProgram, "textureDimensions"), textureDimensions[0], textureDimensions[1]);
+  // the videoTexture
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, videoTexture);
+  gl.uniform1i(gl.getUniformLocation(glProgram, "videoTextureSampler"), 1);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, keyboardBuffer);
+  // the coordinate attribute
+  gl.bindBuffer(gl.ARRAY_BUFFER, keyboardCoordinatesBuffer);
+  var coordinateLocation = gl.getAttribLocation(glProgram, "coordinate");
+  gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "coordinate") );
+  gl.vertexAttribPointer( coordinateLocation, 3, gl.FLOAT, false, 0, 0);
+
+  // the textureCoordinate attribute
+  gl.bindBuffer(gl.ARRAY_BUFFER, keyboardTexureCoordinatesBuffer);
+  var textureCoordinateLocation = gl.getAttribLocation(glProgram, "textureCoordinate");
+  gl.enableVertexAttribArray( gl.getAttribLocation(glProgram, "textureCoordinate") );
+  gl.vertexAttribPointer( textureCoordinateLocation, 2, gl.FLOAT, false, 0, 0);
+
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
-keyboardTextureImage.src = "../images/apple-keyboard.jpg";
-keyboardTextureImage.onload = loadTexture;
+referenceTextureImage.src = "../images/apple-keyboard.jpg";
+referenceTextureImage.onload = setupReferenceTexture;
 
 </script>
 
@@ -199,11 +269,21 @@ navigator.getUserMedia = navigator.getUserMedia ||
 
 // seems only one video stream can be active at a time, at least
 // on chrome on android so we pick the second video source
-var skipFirstVideo = true;
+// TODO allow switching sources on the fly
 var skipFirstVideo = false;
 
 // when sources are found
 function gotSources(sourceInfos) {
+  var videoSourceCount = 0;
+  for (var i = 0; i !== sourceInfos.length; ++i) {
+    var sourceInfo = sourceInfos[i];
+    if (sourceInfo.kind === 'video') {
+      videoSourceCount++;
+    }
+  }
+  if (videoSourceCount > 1) {
+    skipFirstVideo = true;
+  }
   for (var i = 0; i !== sourceInfos.length; ++i) {
     var sourceInfo = sourceInfos[i];
     if (sourceInfo.kind === 'video') {
@@ -277,22 +357,20 @@ function videoStart(videoSource){
 
 
 <script>
-var videoElement = null;
 
 // the render loop to move the video into texture
+var videoElement = null;
 var animationFrame = function() {
   if (videoCount > 0) {
     if (!videoElement) {
       videoElement = document.querySelector('#video1');
+      setupVideoTexture();
     } else {
       if (videoElement.videoHeight) { // only defined when loaded
-        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.bindTexture(gl.TEXTURE_2D, videoTexture);
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, videoElement);
+        gl.bindTexture(gl.TEXTURE_2D, null);
         render3D();
       }
     }
@@ -396,7 +474,7 @@ var sendTransform = function() {
     sendTransform();
   })
   .fail(function() {
-    alert("Could not send transform, aborting");
+    console.log("Could not send transform, aborting");
   });
 }
 
