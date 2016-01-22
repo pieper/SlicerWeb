@@ -144,7 +144,7 @@ class WebServerWidget:
     """
     self.webView.setHtml(html)
     self.webView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
-    self.webView.setUrl(qt.QUrl('http://localhost:8080'))
+    self.webView.setUrl(qt.QUrl('http://localhost:8080/work'))
     self.webView.show()
 
   def onReload(self):
@@ -945,6 +945,7 @@ class SlicerHTTPServer(HTTPServer):
     HTTPServer.__init__(self,server_address, RequestHandlerClass)
     self.docroot = docroot
     self.timeout = 1.
+    self.socket.settimeout(5.)
     self.logFile = logFile
     if logMessage:
       self.logMessage = logMessage
@@ -953,7 +954,10 @@ class SlicerHTTPServer(HTTPServer):
   def onSocketNotify(self,fileno):
       # based on SocketServer.py: self.serve_forever()
       self.logMessage('got request on %d' % fileno)
-      self.handle_request()
+      try:
+        self.handle_request()
+      except socket.error, e:
+        self.logMessage('Error', e)
 
   def start(self):
     """start the server
@@ -972,6 +976,20 @@ class SlicerHTTPServer(HTTPServer):
   def stop(self):
     self.socket.close()
     self.notifier = None
+
+  def handle_error(self, request, client_address):
+    """Handle an error gracefully.  May be overridden.
+
+    The default is to print a traceback and continue.
+
+    """
+    print ('-'*40)
+    print ('Exception happened during processing of request', request)
+    print ('From', client_address)
+    import traceback
+    traceback.print_exc() # XXX But this goes to stderr!
+    print ('-'*40)
+
 
   def logMessage(self,message):
     if self.logFile:
