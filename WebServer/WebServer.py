@@ -929,6 +929,7 @@ class SlicerHTTPServer(HTTPServer):
   def __init__(self, server_address=("",8070), RequestHandlerClass=SlicerRequestHandler, docroot='.', logFile=None,logMessage=None):
     HTTPServer.__init__(self,server_address, RequestHandlerClass)
     self.docroot = docroot
+    self.timeout = 1.
     self.logFile = logFile
     if logMessage:
       self.logMessage = logMessage
@@ -937,7 +938,7 @@ class SlicerHTTPServer(HTTPServer):
   def onSocketNotify(self,fileno):
       # based on SocketServer.py: self.serve_forever()
       self.logMessage('got request on %d' % fileno)
-      self._handle_request_noblock()
+      self.handle_request()
 
   def start(self):
     """start the server
