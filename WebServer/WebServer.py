@@ -117,11 +117,16 @@ class WebServerWidget:
     # TODO: config option for port
 
     # open local connection button
-    self.localConnectionButton = qt.QPushButton("Open Page")
-    self.localConnectionButton.toolTip = "Open a connection to the server on the local machine."
+    self.localConnectionButton = qt.QPushButton("Open Browser Page")
+    self.localConnectionButton.toolTip = "Open a connection to the server on the local machine with your system browser."
     self.layout.addWidget(self.localConnectionButton)
     self.localConnectionButton.connect('clicked()', self.openLocalConnection)
 
+    # open local connection button
+    self.localQtConnectionButton = qt.QPushButton("Open QtWebKit Page")
+    self.localQtConnectionButton.toolTip = "Open a connection with Qt to the server on the local machine."
+    self.layout.addWidget(self.localQtConnectionButton)
+    self.localQtConnectionButton.connect('clicked()', self.openQtLocalConnection)
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
@@ -131,6 +136,16 @@ class WebServerWidget:
 
   def openLocalConnection(self):
     qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:8080'))
+
+  def openQtLocalConnection(self):
+    self.webView = qt.QWebView()
+    html = """
+    <h1>Loading from <a href="http://localhost:8080">Localhost 8080</a></h1>
+    """
+    self.webView.setHtml(html)
+    self.webView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
+    self.webView.setUrl(qt.QUrl('http://localhost:8080'))
+    self.webView.show()
 
   def onReload(self):
     import imp, sys, os
