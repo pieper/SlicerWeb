@@ -14,7 +14,7 @@
     <script src="./jslib/pouchdb-5.1.0.js"></script>
     <script src="./jslib/pouchdb.memory.js"></script>
 
-    <script src="./dicomMetadictionary.js"></script>
+    <script src="dicomMetadictionary.js"></script>
 
     <script>
       $(document).ready(function() {
@@ -184,8 +184,6 @@
           $('#datasetTree').jstree().close_all();
           $('#datasetTree').jstree().create_node('#', { 'id' : instanceUID, 'text' : 'Loading Dataset...' }, 'last', function() {});
 
-          // TODO: fill the the tree
-
           db.get(instanceUID).then(function(doc) {
             var dataset = doc.dataset;
 
@@ -200,9 +198,11 @@
                 delete sequence[tag];
               }
               if (vr === "SQ") {
-                var nestedSequence = value[0];
-                for (var tag in nestedSequence) {
-                  mapTag(nestedSequence, tag);
+                for (var nestIndex = 0; nestIndex < value.length; nestIndex++) {
+                  var nestedSequence = value[nestIndex];
+                  for (var tag in nestedSequence) {
+                    mapTag(nestedSequence, tag);
+                  }
                 }
               }
             }
@@ -224,9 +224,13 @@
               var text = name + ": " + value;
               if (vr === 'SQ') {
                 $('#datasetTree').jstree().create_node(parentID, { 'id' : id, 'text' : name  }, 'last', function() {});
-                var nestedSequence = value[0];
-                for (var tag in nestedSequence) {
-                  populateTree(id, nestedSequence, tag);
+                for (var nestIndex = 0; nestIndex < value.length; nestIndex++) {
+                  var sequenceID = id + "_" + nestIndex;
+                  $('#datasetTree').jstree().create_node(parentID, { 'id' : sequenceID, 'text' : "Sequence"  }, 'last', function() {});
+                  var nestedSequence = value[nestIndex];
+                  for (var tag in nestedSequence) {
+                    populateTree(sequenceID, nestedSequence, tag);
+                  }
                 }
               } else {
                 $('#datasetTree').jstree().create_node(parentID, { 'id' : id, 'text' : text  }, 'last', function() {});
