@@ -226,7 +226,7 @@
                 $('#datasetTree').jstree().create_node(parentID, { 'id' : id, 'text' : name  }, 'last', function() {});
                 for (var nestIndex = 0; nestIndex < value.length; nestIndex++) {
                   var sequenceID = id + "_" + nestIndex;
-                  $('#datasetTree').jstree().create_node(parentID, { 'id' : sequenceID, 'text' : "Sequence"  }, 'last', function() {});
+                  $('#datasetTree').jstree().create_node(id, { 'id' : sequenceID, 'text' : "Sequence"  }, 'last', function() {});
                   var nestedSequence = value[nestIndex];
                   for (var tag in nestedSequence) {
                     populateTree(sequenceID, nestedSequence, tag);
