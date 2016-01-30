@@ -1,5 +1,6 @@
 import os
 from __main__ import vtk, qt, ctk, slicer
+from slicer.ScriptedLoadableModule import *
 
 import sys
 import select
@@ -50,23 +51,17 @@ This work was partially funded by NIH grant 3P41RR013218.
 # WebServer widget
 #
 
-class WebServerWidget:
+class WebServerWidget(ScriptedLoadableModuleWidget):
+  """Uses ScriptedLoadableModuleWidget base class, available at:
+  https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
+  """
+
 
   def __init__(self, parent=None):
+    ScriptedLoadableModuleWidget.__init__(self, parent)
     self.observerTags = []
     self.guiMessages = True
     self.consoleMessages = True
-
-    if not parent:
-      self.parent = slicer.qMRMLWidget()
-      self.parent.setLayout(qt.QVBoxLayout())
-      self.parent.setMRMLScene(slicer.mrmlScene)
-      self.layout = self.parent.layout()
-      self.setup()
-      self.parent.show()
-    else:
-      self.parent = parent
-      self.layout = parent.layout()
 
   def enter(self):
     pass
@@ -79,6 +74,7 @@ class WebServerWidget:
     self.guiMessages = self.logToGUI.checked
 
   def setup(self):
+    ScriptedLoadableModuleWidget.setup(self)
 
     # reload button
     self.reloadButton = qt.QPushButton("Reload")
@@ -148,43 +144,9 @@ class WebServerWidget:
     self.webView.show()
 
   def onReload(self):
-    import imp, sys, os
-
-    try:
-      self.logic.stop()
-    except AttributeError:
-      # can happen if logic failed to load
-      pass
-
-    filePath = slicer.modules.webserver.path
-    p = os.path.dirname(filePath)
-    if not sys.path.__contains__(p):
-      sys.path.insert(0,p)
-
-    mod = "WebServer"
-    fp = open(filePath, "r")
-    globals()[mod] = imp.load_module(mod, fp, filePath, ('.py', 'r', imp.PY_SOURCE))
-    fp.close()
-
-    # rebuild the widget
-    # - find and hide the existing widget
-    # - remove all the layout items
-    # - create a new widget in the existing parent
-    parent = slicer.util.findChildren(name='WebServer Reload')[0].parent()
-    for child in parent.children():
-      try:
-        child.hide()
-      except AttributeError:
-        pass
-    item = parent.layout().itemAt(0)
-    while item:
-      parent.layout().removeItem(item)
-      item = parent.layout().itemAt(0)
-
-    globals()['web'] = web = globals()[mod].WebServerWidget(parent)
-    web.setup()
-
-    web.logic.start()
+    self.logic.stop()
+    ScriptedLoadableModuleWidget.onReload(self)
+    slicer.modules.WebServerWidget.logic.start()
 
 
   def logMessage(self,*args):
