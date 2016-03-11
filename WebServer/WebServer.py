@@ -918,7 +918,8 @@ class SlicerHTTPServer(HTTPServer):
       # based on SocketServer.py: self.serve_forever()
       self.logMessage('got request on %d' % fileno)
       try:
-        self.handle_request()
+        # self.handle_request_noblock()
+        self._handle_request_noblock()
       except socket.error, e:
         self.logMessage('Socket Notify Error', e)
 
