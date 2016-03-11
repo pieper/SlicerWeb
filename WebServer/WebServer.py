@@ -131,16 +131,16 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.layout.addStretch(1)
 
   def openLocalConnection(self):
-    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:8080'))
+    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016'))
 
   def openQtLocalConnection(self):
     self.webView = qt.QWebView()
     html = """
-    <h1>Loading from <a href="http://localhost:8080">Localhost 8080</a></h1>
+    <h1>Loading from <a href="http://localhost:2016">Localhost 2016</a></h1>
     """
     self.webView.setHtml(html)
     self.webView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
-    self.webView.setUrl(qt.QUrl('http://localhost:8080/work'))
+    self.webView.setUrl(qt.QUrl('http://localhost:2016/work'))
     self.webView.show()
 
   def onReload(self):
@@ -275,7 +275,8 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       self.wfile.write( body )
 
     except Exception, e:
-      self.send_error(404, "File not found")
+      # self.send_error(404, "File not found")
+      self.logMessage("Exception in do_GET")
       import traceback
       traceback.print_exc()
 
@@ -919,7 +920,7 @@ class SlicerHTTPServer(HTTPServer):
       try:
         self.handle_request()
       except socket.error, e:
-        self.logMessage('Error', e)
+        self.logMessage('Socket Notify Error', e)
 
   def start(self):
     """start the server
@@ -960,7 +961,7 @@ class SlicerHTTPServer(HTTPServer):
       fp.close()
 
   @classmethod
-  def findFreePort(self,port=8080):
+  def findFreePort(self,port=2016):
     """returns a port that is not apparently in use"""
     portFree = False
     while not portFree:
@@ -989,7 +990,7 @@ class WebServerLogic:
   def __init__(self, logMessage=None):
     if logMessage:
       self.logMessage = logMessage
-    self.port = 8080
+    self.port = 2016
     self.server = None
     self.logFile = '/tmp/WebServerLogic.log'
 
