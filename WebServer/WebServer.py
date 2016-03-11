@@ -701,6 +701,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       if orientation.lower() == 'coronal':
         sliceNode.SetOrientationToCoronal()
 
+    imageData = sliceLogic.GetBlend().Update(0)
     imageData = sliceLogic.GetBlend().GetOutputDataObject(0)
     pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
     self.logMessage('returning an image of %d length' % len(pngData))
