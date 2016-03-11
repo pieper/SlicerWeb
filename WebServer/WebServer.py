@@ -694,12 +694,15 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
 
     if orientation:
       sliceNode = sliceLogic.GetSliceNode()
+      previousOrientation = sliceNode.GetOrientationString().lower()
       if orientation.lower() == 'axial':
         sliceNode.SetOrientationToAxial()
       if orientation.lower() == 'sagittal':
         sliceNode.SetOrientationToSagittal()
       if orientation.lower() == 'coronal':
         sliceNode.SetOrientationToCoronal()
+      if orientation.lower() != previousOrientation:
+        sliceLogic.FitSliceToAll()
 
     imageData = sliceLogic.GetBlend().Update(0)
     imageData = sliceLogic.GetBlend().GetOutputDataObject(0)
