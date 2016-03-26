@@ -714,6 +714,8 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     """return a png for a threeD view
     Args:
      view={nodeid} (currently ignored)
+     mode= (currently ignored)
+     lookFromAxis = {L, R, A, P, I, S}
     """
     pngMethod = 'PIL'
     if not hasImage:
@@ -732,6 +734,10 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       view = q['view'][0].strip().lower()
     except KeyError:
       view = '1'
+    try:
+      lookFromAxis = q['lookFromAxis'][0].strip().lower()
+    except KeyError:
+      lookFromAxis = None
     try:
       size = int(q['size'][0].strip())
     except (KeyError, ValueError):
@@ -765,7 +771,18 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
     view = layoutManager.threeDWidget(0).threeDView()
     view.renderEnabled = False
 
-    if mode:
+    if lookFromAxis:
+      axes = ['None', 'r','l','s','i','a','p']
+      try:
+        axis = axes.index(lookFromAxis[0])
+        view.lookFromViewAxis(axis)
+      except ValueError:
+        pass
+
+    if False and mode:
+      # TODO: 'statefull' interaction with the camera
+      # - save current camera when mode is 'start'
+      # - increment relative to the start camera during interaction
       cameraNode = slicer.util.getNode('*Camera*')
       camera = cameraNode.GetCamera()
       #if mode == 'start' or not self.interactionState.has_key('camera'):
@@ -809,6 +826,7 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
 
     view.renderWindow().Render()
     view.renderEnabled = True
+    view.forceRender()
     w2i = vtk.vtkWindowToImageFilter()
     w2i.SetInput(view.renderWindow())
     w2i.SetReadFrontBuffer(0)
