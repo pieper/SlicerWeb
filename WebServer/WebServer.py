@@ -2,6 +2,7 @@ import os
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
+import logging
 import sys
 import select
 import urlparse
@@ -124,6 +125,12 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(self.localQtConnectionButton)
     self.localQtConnectionButton.connect('clicked()', self.openQtLocalConnection)
 
+    # open local connection button
+    self.qiicrChartButton = qt.QPushButton("Open QIICR Chart Demo")
+    self.qiicrChartButton.toolTip = "Open the QIICR chart demo.  You need to be on the internet to access the page and you need to have the QIICR Iowa data loaded in your DICOM database in order to drill down to the image level."
+    self.layout.addWidget(self.qiicrChartButton)
+    self.qiicrChartButton.connect('clicked()', self.openQIICRChartDemo)
+
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
 
@@ -142,6 +149,43 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.webView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
     self.webView.setUrl(qt.QUrl('http://localhost:2016/work'))
     self.webView.show()
+
+  def openQIICRChartDemo(self):
+    self.qiicrWebView = qt.QWebView()
+    self.qiicrWebView.setGeometry(50, 50, 1750, 1200)
+    url = "http://pieper.github.io/qiicr-chart/dcsr/qiicr-chart"
+    url = "http://localhost:12345/dcsr/qiicr-chart/index.html"
+    html = """
+    <h1>Loading from <a href="%(url)s">%(url)s/a></h1>
+    """ % {'url' : url}
+    self.qiicrWebView.setHtml(html)
+    self.qiicrWebView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
+    self.qiicrWebView.setUrl(qt.QUrl(url))
+    self.qiicrWebView.show()
+
+    page = self.qiicrWebView.page()
+    if not page.connect('statusBarMessage(QString)', self.qiicrChartMessage):
+      logging.error('statusBarMessage connect failed')
+
+  def qiicrChartMessage(self,message):
+    print(message)
+    import json
+    doc = json.loads(message)
+    instanceUID = doc['instanceUID']
+
+    print('want to load', instanceUID)
+    instanceUID = '1.2.276.0.7230010.3.1.4.8323329.10006.1436811198.81030'
+    print('instead loading', instanceUID)
+
+    seriesUID = slicer.dicomDatabase.instanceValue(instanceUID,'0020,000E')
+    print('actually offering', seriesUID)
+
+
+    from DICOMLib import DICOMDetailsPopup
+    self.detailsPopup = DICOMDetailsPopup()
+    self.detailsPopup.offerLoadables(seriesUID, 'Series')
+    self.detailsPopup.examineForLoading()
+    self.detailsPopup.loadCheckedLoadables()
 
   def onReload(self):
     self.logic.stop()
