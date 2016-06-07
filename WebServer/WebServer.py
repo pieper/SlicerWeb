@@ -168,7 +168,8 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
       logging.error('statusBarMessage connect failed')
 
   def qiicrChartMessage(self,message):
-    print(message)
+    if message == "":
+      return
     import json
     doc = json.loads(message)
     instanceUID = doc['instanceUID']
