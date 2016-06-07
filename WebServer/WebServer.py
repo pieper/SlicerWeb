@@ -153,8 +153,8 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
   def openQIICRChartDemo(self):
     self.qiicrWebView = qt.QWebView()
     self.qiicrWebView.setGeometry(50, 50, 1750, 1200)
-    url = "http://pieper.github.io/qiicr-chart/dcsr/qiicr-chart"
     url = "http://localhost:12345/dcsr/qiicr-chart/index.html"
+    url = "http://pieper.github.io/qiicr-chart/dcsr/qiicr-chart"
     html = """
     <h1>Loading from <a href="%(url)s">%(url)s/a></h1>
     """ % {'url' : url}
@@ -174,7 +174,7 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     instanceUID = doc['instanceUID']
 
     print('want to load', instanceUID)
-    instanceUID = '1.2.276.0.7230010.3.1.4.8323329.10006.1436811198.81030'
+    # instanceUID = '1.2.276.0.7230010.3.1.4.8323329.10006.1436811198.81030'
     print('instead loading', instanceUID)
 
     seriesUID = slicer.dicomDatabase.instanceValue(instanceUID,'0020,000E')
