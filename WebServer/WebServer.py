@@ -979,16 +979,51 @@ class SlicerHTTPServer(HTTPServer):
     self.logFile = logFile
     if logMessage:
       self.logMessage = logMessage
+    self.notifiers = {}
+    self.connections = {}
+    self.data = {}
 
+  def onConnectionSocketNotify(self,fileno):
+    terminate = False
+    connection = self.connections[fileno]
+    try:
+      data = connection.recv(16)
+      self.data[fileno] += data
+      if self.data[fileno].endswith('\r\n\r\n'):
+        self.logMessage('Got complete message: ', self.data[fileno])
+        terminate = True
+    except socket.error, e:
+      terminate = True
+    if len(data) == 0 or terminate:
+      body = "<b>hoot</b>"
+      answer = "HTTP/1.1 200 OK\r\n"
+      answer += "Content-Type: text/html\r\n"
+      answer += "Content-Length: %d\r\n" % len(body)
+      answer += "\r\n"
+      answer += body
+      connection.sendall(answer)
+      self.logMessage('closing')
+      self.notifiers[fileno].disconnect('activated(int)', self.onConnectionSocketNotify)
+      del self.notifiers[fileno]
+      del self.connections[fileno]
+      connection.close()
 
-  def onSocketNotify(self,fileno):
+  def onServerSocketNotify(self,fileno):
       # based on SocketServer.py: self.serve_forever()
       self.logMessage('got request on %d' % fileno)
       try:
         # self.handle_request_noblock()
-        self._handle_request_noblock()
+        #self._handle_request_noblock()
+        (connection, clientAddress) = self.socket.accept()
+        fileno = connection.fileno()
+        self.connections[fileno] = connection
+        self.data[fileno] = ""
+        self.logMessage('Connected on %d' % connection.fileno())
+        self.notifiers[fileno] = qt.QSocketNotifier(connection.fileno(),qt.QSocketNotifier.Read)
+        self.notifiers[fileno].connect('activated(int)', self.onConnectionSocketNotify)
+
       except socket.error, e:
-        self.logMessage('Socket Notify Error', e)
+        self.logMessage('Socket Notify Error', socket.error, e)
 
   def start(self):
     """start the server
@@ -998,7 +1033,8 @@ class SlicerHTTPServer(HTTPServer):
     try:
       self.logMessage('started httpserver...')
       self.notifier = qt.QSocketNotifier(self.socket.fileno(),qt.QSocketNotifier.Read)
-      self.notifier.connect('activated(int)', self.onSocketNotify)
+      self.logMessage('listening on %d...' % self.socket.fileno())
+      self.notifier.connect('activated(int)', self.onServerSocketNotify)
 
     except KeyboardInterrupt:
       self.logMessage('KeyboardInterrupt - stopping')
@@ -1071,7 +1107,7 @@ class WebServerLogic:
       print("Logic: " + arg)
 
   def start(self):
-    """Create the subprocess and set up a polling timer"""
+    """Set up the server"""
     self.stop()
     self.port = SlicerHTTPServer.findFreePort(self.port)
     self.logMessage("Starting server on port %d" % self.port)
