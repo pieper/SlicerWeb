@@ -199,6 +199,9 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
       for arg in args:
         print(arg)
     if self.guiMessages:
+      if len(self.log.html) > 1024*256:
+        self.log.clear()
+        self.log.insertHtml("Log cleared\n")
       for arg in args:
         self.log.insertHtml(arg)
       self.log.insertPlainText('\n')
@@ -211,121 +214,10 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
 # SlicerRequestHandler
 #
 
-class SlicerRequestHandler(SimpleHTTPRequestHandler):
+class SlicerRequestHandler(object):
 
-  def start_response(self, status, response_headers):
-    self.send_response(status)
-    for keyword,value in response_headers:
-      self.send_header(keyword, value)
-    self.end_headers()
-
-  def logMessage(self, message):
-     self.server.logMessage(message)
-
-  def log_message(self, format, *args):
-      """Log an arbitrary message.
-
-      This is used by all other logging functions.  Override
-      it if you have specific logging wishes.
-
-      The first argument, FORMAT, is a format string for the
-      message to be logged.  If the format string contains
-      any % escapes requiring parameters, they should be
-      specified as subsequent arguments (it's just like
-      printf!).
-
-      The client host and current date/time are prefixed to
-      every message.
-
-      """
-
-      self.logMessage("%s - - [%s] %s\n" %
-                       (self.address_string(),
-                        self.log_date_time_string(),
-                        format%args))
-
-  def do_GET(self):
-    self.protocol_version = 'HTTP/1.1'
-    try:
-      status = 200
-      rest = self.path
-      self.logMessage("Handling: " + rest)
-
-      # Handle this as a standard request
-      #
-      if not(os.path.dirname(rest).endswith('slicer')):
-        os.chdir(self.server.docroot)
-        self.logMessage(" ... using SimpleHTTPRequestHandler" )
-        SimpleHTTPRequestHandler.do_GET(self)
-        return
-
-      # Got a /slicer request
-      #
-      if False:
-        # TODO
-        # But we're busy ... write response and return
-        response_headers = [('Content-Type','text/plain')]
-        self.logMessage('Server busy')
-        self.start_response(status, response_headers)
-        self.wfile.write( 'Busy' )
-        return
-
-      # Now we're talking to Slicer...
-      URL = urlparse.urlparse( rest )
-      ACTION = os.path.basename( URL.path )
-      self.logMessage('Parsing url, action is {' + ACTION +
-        '} query is {' + URL.query + '}')
-
-      body = self.handleSlicerCommand('/' + ACTION + '?' + URL.query)
-      count = len(body)
-      self.logMessage("  [done]")
-
-      response_headers = [
-          ('Content-length', str(count)),
-          ('Cache-Control', 'no-cache'),
-      ]
-
-      if ACTION == "repl":
-        response_headers += [('Content-Type','text/plain')]
-      elif ACTION == "preset":
-        response_headers += [('Content-Type','text/plain')]
-      elif ACTION == "mrml":
-        response_headers += [('Content-Type','application/json')]
-      elif ACTION == "scene":
-        response_headers += [('Content-Type','application/json')]
-      elif ACTION == "timeimage":
-        response_headers += [('Content-Type','image/png')]
-      elif ACTION == "slice":
-        response_headers += [('Content-Type','image/png')]
-      elif ACTION == "threeD":
-        response_headers += [('Content-Type','image/png')]
-      elif ACTION == "transform":
-        response_headers += [('Content-Type','text/plain')]
-      elif ACTION == "eulers":
-        response_headers += [('Content-Type','text/plain')]
-      elif ACTION == "volumeSelection":
-        response_headers += [('Content-Type','text/plain')]
-      elif ACTION == "volume":
-        response_headers += [('Content-Type','application/octet-stream')]
-      elif URL.query.endswith("png"):
-        response_headers += [('Content-Type','image/png')]
-      else:
-        # didn't match known slicer API commands, so we shouldn't
-        # prevent other slicer connections from completing
-        self.logMessage( 'WARNING: no matching action for:' + rest )
-        response_headers += [('Content-Type','text/plain')]
-
-      # FINALLY, write the "body" returned by Slicer as the response
-      self.start_response(status, response_headers)
-      self.wfile.write( body )
-
-    except Exception, e:
-      # self.send_error(404, "File not found")
-      self.logMessage("Exception in do_GET")
-      import traceback
-      traceback.print_exc()
-
-    # end do_GET
+  def __init__(self, logMessage):
+    self.logMessage = logMessage
 
   def vtkImageDataToPNG(self,imageData,method='VTK'):
     """Return a buffer of png data using the data
@@ -361,40 +253,6 @@ class SlicerRequestHandler(SimpleHTTPRequestHandler):
       pngData = pngStringIO.getvalue()
 
     return pngData
-
-  def dumpReq( self, formInput=None ):
-      response= "<html><head></head><body>"
-      response+= "<p>HTTP Request</p>"
-      response+= "<p>self.command= <tt>%s</tt></p>" % ( self.command )
-      response+= "<p>self.path= <tt>%s</tt></p>" % ( self.path )
-      response+= "</body></html>"
-      self.sendPage( "text/html", response )
-
-  def sendPage( self, type, body ):
-      self.send_response( 200 )
-      self.send_header( "Content-type", type )
-      self.send_header( "Content-length", str(len(body)) )
-      self.end_headers()
-      self.wfile.write( body )
-
-  def do_PUT(self):
-    try:
-      self.server.logMessage( "Command: %s Path: %s Headers: %r"
-                        % ( self.command, self.path, self.headers.items() ) )
-      if self.headers.has_key('content-length'):
-          length= int( self.headers['content-length'] )
-          body = self.rfile.read( length )
-          self.logMessage("Got: %s" % body)
-          self.dumpReq( self.rfile.read( length ) )
-      else:
-          self.dumpReq( None )
-
-    except :
-        self.server.logMessage('could not PUT')
-
-  def do_POST(self):
-    #TODO
-    pass
 
   def handleSlicerCommand(self, cmd):
     import traceback
@@ -981,49 +839,119 @@ class SlicerHTTPServer(HTTPServer):
       self.logMessage = logMessage
     self.notifiers = {}
     self.connections = {}
-    self.data = {}
+    self.requestCommunicators = {}
 
-  def onConnectionSocketNotify(self,fileno):
-    terminate = False
-    connection = self.connections[fileno]
-    try:
-      data = connection.recv(16)
-      self.data[fileno] += data
-      if self.data[fileno].endswith('\r\n\r\n'):
-        self.logMessage('Got complete message: ', self.data[fileno])
+
+  class RequestCommunicator(object):
+    """Encapsulate elements for handling event driven read of request"""
+    def __init__(self, connectionSocket, logMessage):
+      self.connectionSocket = connectionSocket
+      self.logMessage = logMessage
+      self.slicerRequestHandler = SlicerRequestHandler(logMessage)
+      self.requestSoFar = ""
+      fileno = self.connectionSocket.fileno()
+      self.readNotifier = qt.QSocketNotifier(fileno, qt.QSocketNotifier.Read)
+      self.readNotifier.connect('activated(int)', self.onReadable)
+      self.logMessage('Waiting on %d...' % fileno)
+
+    def onReadable(self, fileno):
+      self.logMessage('Reading...')
+      terminate = False
+      requestPart = ""
+      try:
+        requestPart = self.connectionSocket.recv(1024*1024)
+        self.logMessage('Reading... %d' % len(requestPart))
+        self.requestSoFar += requestPart
+        if self.requestSoFar.endswith('\r\n\r\n'):
+          # TODO: for now we ignore any message body
+          terminate = True
+      except socket.error, e:
         terminate = True
-    except socket.error, e:
-      terminate = True
-    if len(data) == 0 or terminate:
-      body = "<b>hoot</b>"
-      answer = "HTTP/1.1 200 OK\r\n"
-      answer += "Content-Type: text/html\r\n"
-      answer += "Content-Length: %d\r\n" % len(body)
-      answer += "\r\n"
-      answer += body
-      connection.sendall(answer)
-      self.logMessage('closing')
-      self.notifiers[fileno].disconnect('activated(int)', self.onConnectionSocketNotify)
-      del self.notifiers[fileno]
-      del self.connections[fileno]
-      connection.close()
+      if len(requestPart) == 0 or terminate:
+        self.readNotifier.disconnect('activated(int)', self.onReadable)
+        del self.readNotifier
+        self.logMessage('Got complete message: ', self.requestSoFar)
+
+        requestLines = self.requestSoFar.split('\r\n')
+        method,uri,version = requestLines[0].split(' ')
+        if version != "HTTP/1.1":
+          self.logMessage("Warning, we don't speak %s", version)
+
+        if method != "GET":
+          self.logMessage("Warning, we only handle GET")
+          return
+
+        contentType = 'text/plain'
+        body = 'No body'
+        if not(os.path.dirname(uri).endswith('slicer')):
+          self.logMessage("TODO: serve static content" )
+          body = "We don't serve static content yet"
+        else:
+          url = urlparse.urlparse( uri )
+          action = os.path.basename( url.path )
+          self.logMessage('Parsing url, action is {' + action + '} query is {' + url.query + '}')
+          body = self.slicerRequestHandler.handleSlicerCommand('/' + action + '?' + url.query)
+
+          actionContentTypes = {
+            "repl": 'text/plain',
+            "preset": 'text/plain',
+            "mrml": 'application/json',
+            "scene": 'application/json',
+            "timeimage": 'image/png',
+            "slice": 'image/png',
+            "threeD": 'image/png',
+            "transform": 'text/plain',
+            "eulers": 'text/plain',
+            "volumeSelection": 'text/plain',
+            "volume": 'application/octet-stream',
+          }
+          contentType = 'text/plain'
+          if url.query.endswith("png"):
+            contentType = 'image/png'
+          elif action in actionContentTypes:
+            contentType = actionContentTypes[action]
+
+        self.response = "HTTP/1.1 200 OK\r\n"
+        self.response += "Content-Type: %s\r\n" % contentType
+        self.response += "Content-Length: %d\r\n" % len(body)
+        self.response += "Cache-Control: no-cache\r\n"
+        self.response += "\r\n"
+        self.response += body
+
+        self.toSend = len(self.response)
+        self.sentSoFar = 0
+        fileno = self.connectionSocket.fileno()
+        self.writeNotifier = qt.QSocketNotifier(fileno, qt.QSocketNotifier.Write)
+        self.writeNotifier.connect('activated(int)', self.onWritable)
+
+    def onWritable(self, fileno):
+      self.logMessage('Sending...')
+      sendError = False
+      try:
+        sent = self.connectionSocket.send(self.response)
+        self.response = self.response[sent:]
+        self.sentSoFar += sent
+        self.logMessage('sent: %d of %d' % (sent, self.toSend))
+      except socket.error, e:
+        self.logMessage('Socket error while sending: %s' % e)
+        sendError = True
+
+      if self.sentSoFar >= self.toSend or sendError:
+        self.writeNotifier.disconnect('activated(int)', self.onWritable)
+        del self.writeNotifier
+        self.connectionSocket.close()
+        del self.connectionSocket
+        self.logMessage('closed')
 
   def onServerSocketNotify(self,fileno):
-      # based on SocketServer.py: self.serve_forever()
       self.logMessage('got request on %d' % fileno)
       try:
-        # self.handle_request_noblock()
-        #self._handle_request_noblock()
-        (connection, clientAddress) = self.socket.accept()
-        fileno = connection.fileno()
-        self.connections[fileno] = connection
-        self.data[fileno] = ""
-        self.logMessage('Connected on %d' % connection.fileno())
-        self.notifiers[fileno] = qt.QSocketNotifier(connection.fileno(),qt.QSocketNotifier.Read)
-        self.notifiers[fileno].connect('activated(int)', self.onConnectionSocketNotify)
-
+        (connectionSocket, clientAddress) = self.socket.accept()
+        fileno = connectionSocket.fileno()
+        self.requestCommunicators[fileno] = self.RequestCommunicator(connectionSocket, self.logMessage)
+        self.logMessage('Connected on %s fileno %d' % (connectionSocket, connectionSocket.fileno()))
       except socket.error, e:
-        self.logMessage('Socket Notify Error', socket.error, e)
+        self.logMessage('Socket Error', socket.error, e)
 
   def start(self):
     """start the server
@@ -1042,6 +970,7 @@ class SlicerHTTPServer(HTTPServer):
 
   def stop(self):
     self.socket.close()
+    self.notifier.disconnect('activated(int)', self.onServerSocketNotify)
     self.notifier = None
 
   def handle_error(self, request, client_address):
