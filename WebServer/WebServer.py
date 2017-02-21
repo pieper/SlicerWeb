@@ -13,11 +13,12 @@ try:
 except ImportError:
     import StringIO
 
-import string,time
+import string
+import time
 import socket
 
-from BaseHTTPServer import BaseHTTPRequestHandler, HTTPServer
-from SimpleHTTPServer import SimpleHTTPRequestHandler
+from BaseHTTPServer import HTTPServer
+import mimetypes
 
 import numpy
 
@@ -209,6 +210,49 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
       self.log.repaint()
       #slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
 
+#
+# StaticRequestHandler
+#
+
+class StaticRequestHandler(object):
+
+  def __init__(self, docroot, logMessage):
+    self.docroot = docroot
+    self.logMessage = logMessage
+    self.logMessage('docroot: %s' % self.docroot)
+
+  def handleStaticRequest(self,uri,requestBody):
+    """Return directory listing or binary contents of files
+    TODO: other header fields like modified time
+    """
+    contentType = 'text/plain'
+    responseBody = None
+    if uri.startswith('/'):
+      uri = uri[1:]
+    path = os.path.join(self.docroot,uri)
+    self.logMessage('docroot: %s' % self.docroot)
+    if os.path.isdir(path):
+      for index in "index.html", "index.htm":
+        index = os.path.join(path, index)
+        if os.path.exists(index):
+          path = index
+    self.logMessage('Serving: %s' % path)
+    if os.path.isdir(path):
+      contentType = "text/html"
+      responseBody = "<ul>"
+      for entry in os.listdir(path):
+        responseBody += "<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
+    else:
+      ext = os.path.splitext(path)[-1]
+      if ext in mimetypes.types_map:
+        contentType = mimetypes.types_map[ext]
+      try:
+        fp = open(path, 'rb')
+        responseBody = fp.read()
+        fp.close()
+      except IOError:
+        responseBody = None
+    return contentType, responseBody
 
 #
 # SlicerRequestHandler
@@ -254,45 +298,43 @@ class SlicerRequestHandler(object):
 
     return pngData
 
-  def handleSlicerCommand(self, cmd):
+  def handleSlicerCommand(self, cmd, requestBody):
     import traceback
-    message = "No error"
+    responseBody = None
+    contentType = 'text/plain'
     try:
       if cmd.find('/repl') == 0:
-        return (self.repl(cmd))
-      if cmd.find('/preset') == 0:
-        return (self.preset(cmd))
-      if cmd.find('/timeimage') == 0:
-        return (self.timeimage(cmd))
-      if cmd.find('/slice') == 0:
-        self.logMessage ("got request for slice ("+cmd+")")
-        return (self.slice(cmd))
-      if cmd.find('/threeD') == 0:
-        self.logMessage ("got request for threeD ("+cmd+")")
-        return (self.threeD(cmd))
-      if cmd.find('/mrml') == 0:
-        self.logMessage ("got request for mrml")
-        return (self.mrml(cmd))
-      if cmd.find('/transform') == 0:
-        self.logMessage ("got request for transform")
-        return (self.transform(cmd))
-      if cmd.find('/eulers') == 0:
-        self.logMessage ("got request for eulers")
-        return (self.eulers(cmd))
-      if cmd.find('/volumeSelection') == 0:
-        self.logMessage ("got request for volumeSelection")
-        return (self.volumeSelection(cmd))
-      if cmd.find('/volume') == 0:
-        self.logMessage ("got request for volume")
-        return (self.volume(cmd))
-      response = "unknown command \"" + cmd + "\""
-      self.logMessage (response)
-      return response
+        responseBody = self.repl(cmd)
+      elif cmd.find('/preset') == 0:
+        responseBody = self.preset(cmd)
+      elif cmd.find('/timeimage') == 0:
+        responseBody = self.timeimage(cmd)
+      elif cmd.find('/slice') == 0:
+        responseBody = self.slice(cmd)
+        contentType = 'image/png',
+      elif cmd.find('/threeD') == 0:
+        responseBody = self.threeD(cmd)
+        contentType = 'image/png',
+      elif cmd.find('/mrml') == 0:
+        responseBody = self.mrml(cmd)
+        contentType = 'application/json',
+      elif cmd.find('/transform') == 0:
+        responseBody = self.transform(cmd)
+      elif cmd.find('/eulers') == 0:
+        responseBody = self.eulers(cmd)
+      elif cmd.find('/volumeSelection') == 0:
+        responseBody = self.volumeSelection(cmd)
+      elif cmd.find('/volume') == 0:
+        responseBody = self.volume(cmd, requestBody)
+        contentType = 'application/octet-stream',
+      else:
+        responseBody = "unknown command \"" + cmd + "\""
     except:
       message = traceback.format_exc()
       self.logMessage("Could not handle slicer command: %s" % cmd)
       self.logMessage(message)
-      return message
+
+    return contentType, responseBody
 
   def repl(self,cmd):
     p = urlparse.urlparse(cmd)
@@ -458,7 +500,6 @@ class SlicerRequestHandler(object):
     if not cmd in options:
       cmd = 'next'
 
-    import slicer
     applicationLogic = slicer.app.applicationLogic()
     selectionNode = applicationLogic.GetSelectionNode()
     currentNodeID = selectionNode.GetActiveVolumeID()
@@ -484,32 +525,149 @@ class SlicerRequestHandler(object):
     applicationLogic.PropagateVolumeSelection(0)
     return ( "got it" )
 
-  def volume(self,cmd):
+  def volume(self, cmd, requestBody):
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     try:
-      volumeID = q['id'][0].strip().lower()
+      volumeID = q['id'][0].strip()
     except KeyError:
-      volumeID = '*'
-      volumeID = 'MRHead'
+      volumeID = 'vtkMRMLScalarVolumeNode*'
 
-    import slicer
+    if requestBody:
+      return self.loadNRRD(volumeID, requestBody)
+    else:
+      return self.getNRRD(volumeID)
+
+  def loadNRRD(self, volumeID, requestBody):
+    """Convert a binary blob of nrrd data into a node in the scene.
+    Overwrite volumeID if it exists, otherwise create new"""
+
+    if requestBody[:4] != "NRRD":
+      self.logMessage('Cannot load non-nrrd file')
+      return
+
+    fields = {}
+    endOfHeader = requestBody.find('\n\n') #TODO: could be \r\n
+    header = requestBody[:endOfHeader]
+    for line in header.split('\n'):
+      colonIndex = line.find(':')
+      if line[0] != '#' and colonIndex != -1:
+        key = line[:colonIndex]
+        value = line[colonIndex+2:]
+        fields[key] = value
+
+    if fields['type'] != 'short':
+      self.logMessage('Can only read short volumes')
+      return
+    if fields['dimension'] != '3':
+      self.logMessage('Can only read 3D, 1 component volumes')
+      return
+    if fields['endian'] != 'little':
+      self.logMessage('Can only read little endian')
+      return
+    if fields['encoding'] != 'raw':
+      self.logMessage('Can only read raw encoding')
+      return
+    if fields['space'] != 'left-posterior-superior':
+      self.logMessage('Can only read space in LPS')
+      return
+
+    imageData = vtk.vtkImageData()
+    imageData.SetDimensions(map(int,fields['sizes'].split(' ')))
+    imageData.AllocateScalars(vtk.VTK_SHORT, 1)
+
+    origin = map(float, fields['space origin'].replace('(','').replace(')','').split(','))
+    origin[0] *= -1
+    origin[1] *= -1
+
+    directions = []
+    directionParts = fields['space directions'].split(')')[:3]
+    for directionPart in directionParts:
+      part = directionPart.replace('(','').replace(')','').split(',')
+      directions.append(map(float, part))
+
+    ijkToRAS = vtk.vtkMatrix4x4()
+    ijkToRAS.Identity()
+    for row in range(3):
+      ijkToRAS.SetElement(row,3, origin[row])
+      for column in range(3):
+        element = directions[column][row]
+        if row < 2:
+          element *= -1
+        ijkToRAS.SetElement(row,column, element)
+
+    node = slicer.util.getNode(volumeID)
+    if not node:
+      node = slicer.vtkMRMLScalarVolumeNode()
+      slicer.mrmlScene.AddNode(node)
+    node.SetAndObserveImageData(imageData)
+    node.SetIJKToRASMatrix(ijkToRAS)
+
+    pixels = numpy.frombuffer(requestBody[endOfHeader+2:],dtype=numpy.dtype('int16'))
+    array = slicer.util.array(node.GetID())
+    array[:] = pixels.reshape(array.shape)
+
+  def getNRRD(self, volumeID):
+    """Return a nrrd binary blob with contents of the volume node"""
     volumeNode = slicer.util.getNode(volumeID)
     volumeArray = slicer.util.array(volumeID)
+
+    if volumeNode == None or volumeArray == None:
+      self.logMessage('Could not find requested volume')
+      return None
+    if volumeNode.GetClassName() != "vtkMRMLScalarVolumeNode":
+      self.logMessage('Can only get scalar volumes')
+      return None
+
+    imageData = volumeNode.GetImageData()
+
+    if imageData.GetScalarTypeAsString() != "short":
+      self.logMessage('Can only get volumes of type short')
+      return None
+
+    sizes = imageData.GetDimensions()
+    sizes = " ".join(map(str,sizes))
+
+    originList = [0,]*3
+    directionLists = [[0,]*3,[0,]*3,[0,]*3]
+    ijkToRAS = vtk.vtkMatrix4x4()
+    volumeNode.GetIJKToRASMatrix(ijkToRAS)
+    for row in xrange(3):
+      originList[row] = ijkToRAS.GetElement(row,3)
+      for column in xrange(3):
+        element = ijkToRAS.GetElement(row,column)
+        if row < 2:
+          element *= -1
+        directionLists[column][row] = element
+    originList[0] *=-1
+    originList[1] *=-1
+    origin = '('+','.join(map(str,originList))+')'
+    directions = ""
+    for directionList in directionLists:
+      direction = '('+','.join(map(str,directionList))+')'
+      directions += direction + " "
+    directions = directions[:-1]
+
+    # should look like:
+    #space directions: (0,1,0) (0,0,-1) (-1.2999954223632812,0,0)
+    #space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
+
     nrrdHeader = """NRRD0004
 # Complete NRRD file format specification at:
 # http://teem.sourceforge.net/nrrd/format.html
 type: short
 dimension: 3
 space: left-posterior-superior
-sizes: 256 256 130
-space directions: (0,1,0) (0,0,-1) (-1.2999954223632812,0,0)
+sizes: %%sizes%%
+space directions: %%directions%%
 kinds: domain domain domain
 endian: little
 encoding: raw
-space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
+space origin: %%origin%%
 
-"""
+""".replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
+
+
     nrrdData = StringIO.StringIO()
     nrrdData.write(nrrdHeader)
     nrrdData.write(volumeArray.data)
@@ -517,7 +675,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
 
 
   def mrml(self,cmd):
-    import slicer
     return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
   def slice(self,cmd):
@@ -533,7 +690,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       pngMethod = 'VTK'
     import vtk.util.numpy_support
     import numpy
-    import slicer
 
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
@@ -625,7 +781,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       pngMethod = 'VTK'
     import numpy
     import vtk.util.numpy_support
-    import slicer
     try:
         import cStringIO as StringIO
     except ImportError:
@@ -747,7 +902,6 @@ space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
       self.logMessage('No image support')
       return
     from PIL import Image, ImageDraw, ImageFilter
-    import slicer
     try:
         import cStringIO as StringIO
     except ImportError:
@@ -844,10 +998,13 @@ class SlicerHTTPServer(HTTPServer):
 
   class RequestCommunicator(object):
     """Encapsulate elements for handling event driven read of request"""
-    def __init__(self, connectionSocket, logMessage):
+    def __init__(self, connectionSocket, docroot, logMessage):
       self.connectionSocket = connectionSocket
+      self.docroot = docroot
       self.logMessage = logMessage
       self.slicerRequestHandler = SlicerRequestHandler(logMessage)
+      self.staticRequestHandler = StaticRequestHandler(self.docroot, logMessage)
+      self.expectedRequestSize = -1
       self.requestSoFar = ""
       fileno = self.connectionSocket.fileno()
       self.readNotifier = qt.QSocketNotifier(fileno, qt.QSocketNotifier.Read)
@@ -856,67 +1013,81 @@ class SlicerHTTPServer(HTTPServer):
 
     def onReadable(self, fileno):
       self.logMessage('Reading...')
-      terminate = False
+      requestHeader = ""
+      requestBody = ""
+      requestComplete = False
       requestPart = ""
       try:
         requestPart = self.connectionSocket.recv(1024*1024)
-        self.logMessage('Reading... %d' % len(requestPart))
+        self.logMessage('Just received... %d' % len(requestPart))
         self.requestSoFar += requestPart
-        if self.requestSoFar.endswith('\r\n\r\n'):
-          # TODO: for now we ignore any message body
-          terminate = True
+        endOfHeader = self.requestSoFar.find('\r\n\r\n')
+        if self.expectedRequestSize > 0:
+          self.logMessage('received... %d of %d expected' % (len(self.requestSoFar), self.expectedRequestSize))
+          if len(self.requestSoFar) >= self.expectedRequestSize:
+            requestHeader = self.requestSoFar[:endOfHeader+2]
+            requestBody = self.requestSoFar[4+endOfHeader:]
+            requestComplete = True
+        else:
+          if endOfHeader != -1:
+            self.logMessage('Looking for content in header...')
+            contentLengthTag = self.requestSoFar.find('Content-Length:')
+            if contentLengthTag != -1:
+              tag = self.requestSoFar[contentLengthTag:]
+              numberStartIndex = tag.find(' ')
+              numberEndIndex = tag.find('\r\n')
+              contentLength = int(tag[numberStartIndex:numberEndIndex])
+              self.expectedRequestSize = 4 + endOfHeader + contentLength
+              self.logMessage('Expecting a body of %d, total size %d' % (contentLength, self.expectedRequestSize))
+            else:
+              self.logMessage('Found end of header with no content, so body is empty')
+              requestHeader = self.requestSoFar[:-2]
+              requestComplete = True
       except socket.error, e:
-        terminate = True
-      if len(requestPart) == 0 or terminate:
+        requestComplete = True
+
+      if len(requestPart) == 0 or requestComplete:
+        self.logMessage('Got complete message of header size %d, body size %d' % (len(requestHeader), len(requestBody)))
         self.readNotifier.disconnect('activated(int)', self.onReadable)
         del self.readNotifier
-        self.logMessage('Got complete message: ', self.requestSoFar)
 
-        requestLines = self.requestSoFar.split('\r\n')
+        if len(self.requestSoFar) == 0:
+          self.logMessage("Ignoring empty request")
+          return
+
+        requestLines = requestHeader.split('\r\n')
+        self.logMessage(requestLines[0])
         method,uri,version = requestLines[0].split(' ')
         if version != "HTTP/1.1":
           self.logMessage("Warning, we don't speak %s", version)
 
-        if method != "GET":
-          self.logMessage("Warning, we only handle GET")
+        # TODO: methods = ["GET", "POST", "PUT", "DELETE"]
+        methods = ["GET", "POST"]
+        if not method in methods:
+          self.logMessage("Warning, we only handle %s" % methods)
           return
 
         contentType = 'text/plain'
-        body = 'No body'
+        responseBody = 'No body'
         if not(os.path.dirname(uri).endswith('slicer')):
-          self.logMessage("TODO: serve static content" )
-          body = "We don't serve static content yet"
+          contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
         else:
           url = urlparse.urlparse( uri )
           action = os.path.basename( url.path )
-          self.logMessage('Parsing url, action is {' + action + '} query is {' + url.query + '}')
-          body = self.slicerRequestHandler.handleSlicerCommand('/' + action + '?' + url.query)
+          request = '/' + action + '?' + url.query
+          self.logMessage('Parsing url: %s' % request)
+          contentType, responseBody = self.slicerRequestHandler.handleSlicerCommand(request, requestBody)
 
-          actionContentTypes = {
-            "repl": 'text/plain',
-            "preset": 'text/plain',
-            "mrml": 'application/json',
-            "scene": 'application/json',
-            "timeimage": 'image/png',
-            "slice": 'image/png',
-            "threeD": 'image/png',
-            "transform": 'text/plain',
-            "eulers": 'text/plain',
-            "volumeSelection": 'text/plain',
-            "volume": 'application/octet-stream',
-          }
-          contentType = 'text/plain'
-          if url.query.endswith("png"):
-            contentType = 'image/png'
-          elif action in actionContentTypes:
-            contentType = actionContentTypes[action]
-
-        self.response = "HTTP/1.1 200 OK\r\n"
-        self.response += "Content-Type: %s\r\n" % contentType
-        self.response += "Content-Length: %d\r\n" % len(body)
-        self.response += "Cache-Control: no-cache\r\n"
-        self.response += "\r\n"
-        self.response += body
+        if responseBody:
+          self.response = "HTTP/1.1 200 OK\r\n"
+          self.response += "Content-Type: %s\r\n" % contentType
+          self.response += "Content-Length: %d\r\n" % len(responseBody)
+          self.response += "Cache-Control: no-cache\r\n"
+          self.response += "\r\n"
+          self.response += responseBody
+        else:
+          self.response = "HTTP/1.1 404 Not Found\r\n"
+          self.response += "\r\n"
 
         self.toSend = len(self.response)
         self.sentSoFar = 0
@@ -948,7 +1119,7 @@ class SlicerHTTPServer(HTTPServer):
       try:
         (connectionSocket, clientAddress) = self.socket.accept()
         fileno = connectionSocket.fileno()
-        self.requestCommunicators[fileno] = self.RequestCommunicator(connectionSocket, self.logMessage)
+        self.requestCommunicators[fileno] = self.RequestCommunicator(connectionSocket, self.docroot, self.logMessage)
         self.logMessage('Connected on %s fileno %d' % (connectionSocket, connectionSocket.fileno()))
       except socket.error, e:
         self.logMessage('Socket Error', socket.error, e)
@@ -970,7 +1141,8 @@ class SlicerHTTPServer(HTTPServer):
 
   def stop(self):
     self.socket.close()
-    self.notifier.disconnect('activated(int)', self.onServerSocketNotify)
+    if self.notifier:
+      self.notifier.disconnect('activated(int)', self.onServerSocketNotify)
     self.notifier = None
 
   def handle_error(self, request, client_address):
@@ -1040,6 +1212,7 @@ class WebServerLogic:
     self.stop()
     self.port = SlicerHTTPServer.findFreePort(self.port)
     self.logMessage("Starting server on port %d" % self.port)
+    self.logMessage('docroot: %s' % self.docroot)
     self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage)
     self.server.start()
 
