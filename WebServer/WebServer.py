@@ -534,11 +534,11 @@ class SlicerRequestHandler(object):
       volumeID = 'vtkMRMLScalarVolumeNode*'
 
     if requestBody:
-      return self.loadNRRD(volumeID, requestBody)
+      return self.postNRRD(volumeID, requestBody)
     else:
       return self.getNRRD(volumeID)
 
-  def loadNRRD(self, volumeID, requestBody):
+  def postNRRD(self, volumeID, requestBody):
     """Convert a binary blob of nrrd data into a node in the scene.
     Overwrite volumeID if it exists, otherwise create new"""
 
@@ -599,13 +599,22 @@ class SlicerRequestHandler(object):
     node = slicer.util.getNode(volumeID)
     if not node:
       node = slicer.vtkMRMLScalarVolumeNode()
+      node.SetName(volumeID)
       slicer.mrmlScene.AddNode(node)
+      node.CreateDefaultDisplayNodes()
     node.SetAndObserveImageData(imageData)
     node.SetIJKToRASMatrix(ijkToRAS)
 
     pixels = numpy.frombuffer(requestBody[endOfHeader+2:],dtype=numpy.dtype('int16'))
     array = slicer.util.array(node.GetID())
     array[:] = pixels.reshape(array.shape)
+    imageData.GetPointData().GetScalars().Modified()
+
+    displayNode = node.GetDisplayNode()
+    displayNode.ProcessMRMLEvents(displayNode, vtk.vtkCommand.ModifiedEvent, "")
+    #TODO: this could be optional
+    slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveVolumeID(node.GetID())
+    slicer.app.applicationLogic().PropagateVolumeSelection()
 
   def getNRRD(self, volumeID):
     """Return a nrrd binary blob with contents of the volume node"""
