@@ -1089,6 +1089,7 @@ class SlicerHTTPServer(HTTPServer):
 
         if responseBody:
           self.response = "HTTP/1.1 200 OK\r\n"
+          self.response += "Access-Control-Allow-Origin: *\r\n"
           self.response += "Content-Type: %s\r\n" % contentType
           self.response += "Content-Length: %d\r\n" % len(responseBody)
           self.response += "Cache-Control: no-cache\r\n"
