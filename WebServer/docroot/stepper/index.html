@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+
+  <title>STEPPER - WebGL2 </title>
+
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/FileSaver.min.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/DicomMetaDictionary.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/BufferStream.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/ValueRepresentation.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/Tag.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/DicomMessage.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/normalizers.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/derivations.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/colors.js"></script>
+
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/linear.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/fields.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/view.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/generators.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/renderer.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/growcut.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/gaussian.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/bilateral.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/rasterizer.js"></script>
+
+</head>
+
+<body>
+
+<canvas id="renderCanvas"></canvas>
+
+<script>
+'use strict'
+
+function performImageFilter( generator ) {
+  let filterField = step.renderer.inputFields[step.renderer.inputFields.length-1];
+  if (!filterField || filterField.constructor.name != "ImageField") {
+    alert('Need to load an image field');
+    return;
+  }
+
+  let derivedImage = new DerivedImage([filterField.dataset]);
+  let derivedField0 = Field.fromDataset(derivedImage.dataset)[0];
+
+  // override default calculation
+  derivedField0.windowCenter = filterField.windowCenter;
+  derivedField0.windowWidth = filterField.windowWidth;
+  derivedField0.generatedPixelData = derivedField0.dataset.PixelData;
+
+  step.renderer.inputFields = [filterField, derivedField0];
+  step.renderer.updateProgram();
+
+  step.generator = new generator({
+    gl: step.renderer.gl,
+    inputFields: [filterField],
+    outputFields: [derivedField0],
+  });
+
+  step.generator.gl = step.renderer.gl;
+  step.generator.inputFields = [filterField];
+  step.generator.outputFields = [derivedField0];
+
+  step.generator.updateProgram();
+
+  let animationFrame = function() {
+    console.log(`image filtering`);
+    step.generator.generate();
+    step.renderer._render();
+    filterField.visible = 0;
+    derivedField0.visible = 1;
+    step.renderer.requestRender(step.view);
+  }
+  requestAnimationFrame(animationFrame);
+
+  step.renderer.requestRender(step.view);
+}
+
+function performGaussian() {
+  performImageFilter(GaussianGenerator);
+}
+
+function performBilateral() {
+  performImageFilter(BilateralGenerator);
+}
+
+function performGrowCut() {
+  console.log('starting performGrowCut');
+  let backgroundField = step.renderer.inputFields[step.renderer.inputFields.length-1];
+  if (!backgroundField || backgroundField.constructor.name != "ImageField") {
+    alert('Need to have a background image field');
+    return;
+  }
+
+  let labelFields = [];
+  let strengthFields = [];
+  [0,1].forEach(index=>{
+    let derivedImage = new DerivedImage([backgroundField.dataset]);
+    let labelField = Field.fromDataset(derivedImage.dataset)[0];
+    let strengthField = Field.fromDataset(derivedImage.dataset)[0];
+    labelFields.push(labelField);
+    strengthFields.push(strengthField);
+    step.renderer.inputFields.push(labelField);
+    step.renderer.inputFields.push(strengthField);
+    console.log('added field', index);
+  });
+  // TODO: don't need to upload texture of generated fields
+  step.renderer.updateProgram();
+
+  console.log('updated program');
+
+  backgroundField.visible = 0;
+  let iterations = 50;
+  let iteration = 0;
+  let animationFrame = function() {
+
+    let inBuffer = iteration%2;
+    let outBuffer = (iteration+1)%2;
+
+    if (!step.growcut) {
+      step.growcut = new GrowCutGenerator({
+        gl: step.renderer.gl,
+      });
+      step.growcut.uniforms.iterations.value = iterations;
+      step.growcut.inputFields = [backgroundField,
+                                  labelFields[inBuffer],
+                                  strengthFields[inBuffer]];
+      step.growcut.outputFields = [labelFields[outBuffer],
+                                   strengthFields[outBuffer]];
+      step.growcut.updateProgram();
+    }
+    step.growcut.uniforms.iteration.value = iteration;
+
+    labelFields[inBuffer].visible = 0;
+    strengthFields[inBuffer].visible = 0;
+    labelFields[outBuffer].visible = 1;
+    strengthFields[outBuffer].visible = 0;
+
+    console.log(iteration,'generating');
+    step.growcut.inputFields = [backgroundField,
+                                labelFields[inBuffer],
+                                strengthFields[inBuffer]];
+    step.growcut.outputFields = [labelFields[outBuffer],
+                                 strengthFields[outBuffer]];
+
+    // for the final iteration, save the calculation result to CPU
+    if (iteration == iterations-1) {
+      step.growcut.outputFields.forEach(outputField => {
+        outputField.generatedPixelData = outputField.dataset.PixelData;
+      });
+    }
+
+    step.growcut.generate();
+
+    console.log(iteration,'rendering');
+    step.renderer._render();
+
+    iteration++;
+
+    if (iteration < iterations) {
+      // not finished, trigger another itertion
+      step.ui.bottomBar.progress = `Iteration ${iteration} of ${iterations}`;
+      //requestAnimationFrame(animationFrame); // continue iterating
+    } else {
+      step.ui.bottomBar.progress = `Finished ${iterations} iterations`;
+      [0,1].forEach(index=>{
+        labelFields[index].visible = 0;
+        strengthFields[index].visible = 0;
+      });
+      backgroundField.visible = 1;
+      labelFields[outBuffer].visible = 1;
+      step.renderer._render();
+      console.log('finished');
+    }
+  }
+  //requestAnimationFrame(animationFrame); // start the iterations
+  for (let i = 0; i < iterations; i++) {
+    animationFrame();
+  }
+
+  step.renderer.requestRender(step.view);
+}
+
+// TODO: avoid odd global used in fields and generators
+let USE_INT_TEXTURES = true;
+
+let step = {
+  options : {
+    newVolumeThreeD : false,
+  },
+  uniforms : {
+    pointLight: { type: '3fv', value: [100., -400., 1500.] },
+    gradientSize: { type: '1f', value: .01 },
+    rayMaxSteps: { type: '1i', value: 10000 },
+    sampleStep: { type: '1f', value: 0.1 },
+    renderCanvasWidth: { type: '1f', value: 512 },
+    renderCanvasHeight: { type: '1f', value: 512 },
+    sliceMode: { type: '1i', value: 1 },
+  },
+};
+
+// once document is loaded...
+window.onload = function () {
+
+  //
+  // renderer
+  //
+  let canvas = document.querySelector('#renderCanvas');
+  let gl = canvas.getContext('webgl2');
+
+  if (!gl) {
+    alert('No webgl2 context available');
+  }
+
+  step.renderer = new RayCastRenderer({
+    gl,
+    canvas,
+    uniforms: step.uniforms,
+    inputFields: [],
+  });
+  step.view = new View({
+    viewBoxMax : [250, 250, -250],
+    viewBoxMin : [-250, -250, -200],
+    viewPoint : [0., -400., 0.],
+    viewNormal : [0., 1., 0.],
+    viewUp : [0., 0., 1.],
+  });
+  step.renderer.updateProgram();
+  step.renderer._render(step.view);
+
+  window.addEventListener('resize', resizeEvent => {
+    renderCanvas.width = window.innerWidth;
+    renderCanvas.height = window.innerHeight;
+    step.uniforms.renderCanvasWidth.value = renderCanvas.width;
+    step.uniforms.renderCanvasHeight.value = renderCanvas.height;
+    if (step.renderer) {
+      step.renderer.requestRender(step.view);
+    }
+  });
+  window.dispatchEvent(new Event('resize'));
+
+
+  let onResize = function() {
+    renderCanvas.width = window.innerWidth;
+    renderCanvas.height = window.innerHeight;
+  }
+  onResize();
+  window.onresize = onResize;
+
+  //
+  // helper functions
+  // TODO: put in separate file
+  //
+  function nrrdParse(nrrdArrayBuffer) {
+    // return the header fields and data
+    let newline = '\n'.charCodeAt(0); // value is 10
+    let header = "";
+    let dataOffset = 0;
+    let chars = new Uint8Array(nrrdArrayBuffer);
+    for (let index = 0; index < nrrdArrayBuffer.byteLength-1; index++) {
+      if (chars[index] == newline && chars[index+1] == newline) {
+        dataOffset = index + 2;
+        break;
+      }
+      header += String.fromCharCode(chars[index]);
+    }
+
+    let nrrd = {
+      header: {},
+      data: undefined,
+    };
+    header.split('\n').forEach(line => {
+      let [key, value] = line.split(":");
+      if (value && key[0] != '#') {
+        nrrd.header[key] = value.trim();
+      }
+    });
+
+    nrrd.data = new Int16Array(nrrdArrayBuffer, dataOffset);
+
+    return (nrrd);
+  }
+
+  function nrrdUnparse(nrrd) {
+    // make an array buffer out of the nrrd
+
+    let nrrdHeader = `NRRD0004
+# Complete NRRD file format specification at:
+# http://teem.sourceforge.net/nrrd/format.html
+type: short
+dimension: 3
+space: left-posterior-superior
+sizes: ${nrrd.header['sizes']}
+space directions: ${nrrd.header['space directions']}
+kinds: domain domain domain
+endian: little
+encoding: raw
+space origin: ${nrrd.header['space origin']}
+
+`;
+    let headerBytes = new Uint8Array(nrrdHeader.length);
+    for (let byteIndex = 0; byteIndex < headerBytes.length; byteIndex++) {
+      headerBytes[byteIndex] = nrrdHeader.charCodeAt(byteIndex);
+    }
+    let bodyBytes = new Uint8Array(nrrd.data.buffer);
+    let unparsed = new Uint8Array(headerBytes.length + bodyBytes.length);
+    unparsed.set(headerBytes);
+    unparsed.set(bodyBytes, headerBytes.length);
+
+    return (unparsed.buffer);
+  }
+
+  function nrrdToImageField(nrrdArrayBuffer) {
+    let nrrd = nrrdParse(nrrdArrayBuffer); 
+    console.log(nrrd);
+  }
+
+  //
+  // get some data to filter
+  //
+  let url = "slicer/volume?id=MRHead";
+  let getRequest = new XMLHttpRequest();
+  getRequest.responseType = "arraybuffer";
+  getRequest.onload = function (event) {
+
+    let nrrd = nrrdParse(getRequest.response); 
+    step.nrrd = nrrd;
+    for (let index = 0; index < nrrd.data.length; index++) {
+      nrrd.data[index] = 200 - nrrd.data[index];
+    }
+    let resultArrayBuffer = nrrdUnparse(nrrd);
+
+    let postRequest = new XMLHttpRequest();
+    postRequest.open("POST", url, true);
+    postRequest.send(resultArrayBuffer);
+    
+    console.log('sent');
+    return;
+
+    // todo
+    /*
+    let arrayBuffer = getRequest.response;
+    let field = nrrdToImageField(arrayBuffer);
+    step.renderer.inputFields.push(field);
+    step.renderer.requestRender(step.view);
+    performImageFilter(GaussianGenerator);
+    */
+  };
+  getRequest.open("GET", url, true);
+  getRequest.send(null);
+}
+
+</script>
+
+<p>
+This demo uses <a href='https://www.khronos.org/registry/webgl/specs/latest/2.0/'>WebGL2</a>.  Not all devices and browsers are supported.  As of this writing only the latest Chrome Canary or Firefox Nightly will work.  <a href='https://www.khronos.org/webgl/wiki/Getting_a_WebGL_Implementation'>See this page for details.</a>
+</p>
+
+</body>
+</html>
