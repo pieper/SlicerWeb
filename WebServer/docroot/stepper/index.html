@@ -34,11 +34,11 @@ function stringToUint8Array(string) {
 
 function testREPL() {
 
-  let paramURL = "slicer/repl?source=print(10)";
+  let paramURL = "slicer/repl?source=print('message from a parameter')";
   let paramRequest = new XMLHttpRequest();
   paramRequest.responseType = "";
   paramRequest.onload = function (event) {
-    console.log('param response', paramRequest.response);
+    console.log('parameter response', paramRequest.response);
   };
   paramRequest.open("GET", paramURL, true);
   paramRequest.send(null);
@@ -47,11 +47,10 @@ function testREPL() {
   let bodyRequest = new XMLHttpRequest();
   bodyRequest.responseType = "";
   bodyRequest.onload = function (event) {
-    console.log('param response', bodyRequest.response);
+    console.log('post response', bodyRequest.response);
   };
   bodyRequest.open("POST", bodyURL, true);
-  // TODO: request body is not being sent...
-  let source = "print(20)"
+  let source = "print('message from a POST')"
   bodyRequest.send(stringToUint8Array(source));
   step.bodyRequest = bodyRequest;
 }
