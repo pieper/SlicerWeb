@@ -304,7 +304,7 @@ class SlicerRequestHandler(object):
     contentType = 'text/plain'
     try:
       if cmd.find('/repl') == 0:
-        responseBody = self.repl(cmd)
+        responseBody = self.repl(cmd, requestBody)
       elif cmd.find('/preset') == 0:
         responseBody = self.preset(cmd)
       elif cmd.find('/timeimage') == 0:
@@ -336,14 +336,18 @@ class SlicerRequestHandler(object):
 
     return contentType, responseBody
 
-  def repl(self,cmd):
+  def repl(self,cmd, requestBody):
+    self.logMessage('repl with body %s' % requestBody)
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
-    try:
-      source = urllib.unquote(q['source'][0])
-    except KeyError:
-      self.logMessage('need to supply source code to run')
-      return ""
+    if requestBody:
+      source = requestBody
+    else:
+      try:
+        source = urllib.unquote(q['source'][0])
+      except KeyError:
+        self.logMessage('need to supply source code to run')
+        return ""
     self.logMessage('will run %s' % source)
     code = compile(source, '<slicr-repl>', 'single')
     result = str(eval(code, globals()))
@@ -543,12 +547,13 @@ class SlicerRequestHandler(object):
     Overwrite volumeID if it exists, otherwise create new"""
 
     if requestBody[:4] != "NRRD":
-      self.logMessage('Cannot load non-nrrd file')
+      self.logMessage('Cannot load non-nrrd file (magic is %s)' % requestBody[:4])
       return
 
     fields = {}
     endOfHeader = requestBody.find('\n\n') #TODO: could be \r\n
     header = requestBody[:endOfHeader]
+    self.logMessage(header)
     for line in header.split('\n'):
       colonIndex = line.find(':')
       if line[0] != '#' and colonIndex != -1:
@@ -558,19 +563,19 @@ class SlicerRequestHandler(object):
 
     if fields['type'] != 'short':
       self.logMessage('Can only read short volumes')
-      return
+      return "{'status': 'failed'}"
     if fields['dimension'] != '3':
       self.logMessage('Can only read 3D, 1 component volumes')
-      return
+      return "{'status': 'failed'}"
     if fields['endian'] != 'little':
       self.logMessage('Can only read little endian')
-      return
+      return "{'status': 'failed'}"
     if fields['encoding'] != 'raw':
       self.logMessage('Can only read raw encoding')
-      return
+      return "{'status': 'failed'}"
     if fields['space'] != 'left-posterior-superior':
       self.logMessage('Can only read space in LPS')
-      return
+      return "{'status': 'failed'}"
 
     imageData = vtk.vtkImageData()
     imageData.SetDimensions(map(int,fields['sizes'].split(' ')))
@@ -615,6 +620,8 @@ class SlicerRequestHandler(object):
     #TODO: this could be optional
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveVolumeID(node.GetID())
     slicer.app.applicationLogic().PropagateVolumeSelection()
+
+    return "{'status': 'success'}"
 
   def getNRRD(self, volumeID):
     """Return a nrrd binary blob with contents of the volume node"""

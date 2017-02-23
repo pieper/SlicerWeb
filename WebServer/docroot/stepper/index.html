@@ -1,20 +1,9 @@
 <!DOCTYPE html>
-<html>
 <html lang="en">
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
 
   <title>STEPPER - WebGL2 </title>
-
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/FileSaver.min.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/DicomMetaDictionary.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/BufferStream.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/ValueRepresentation.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/Tag.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/DicomMessage.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/normalizers.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/derivations.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/colors.js"></script>
 
   <script type="text/javascript" src="http://pieper.github.io/sites/step/linear.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/fields.js"></script>
@@ -34,6 +23,38 @@
 
 <script>
 'use strict'
+
+function stringToUint8Array(string) {
+  let array = new Uint8Array(string.length);
+  for (let index of Array(string.length).keys()) {
+    array[index] = string.charCodeAt(index);
+  }
+  return array;
+}
+
+function testREPL() {
+
+  let paramURL = "slicer/repl?source=print(10)";
+  let paramRequest = new XMLHttpRequest();
+  paramRequest.responseType = "";
+  paramRequest.onload = function (event) {
+    console.log('param response', paramRequest.response);
+  };
+  paramRequest.open("GET", paramURL, true);
+  paramRequest.send(null);
+
+  let bodyURL = "slicer/repl";
+  let bodyRequest = new XMLHttpRequest();
+  bodyRequest.responseType = "";
+  bodyRequest.onload = function (event) {
+    console.log('param response', bodyRequest.response);
+  };
+  bodyRequest.open("POST", bodyURL, true);
+  // TODO: request body is not being sent...
+  let source = "print(20)"
+  bodyRequest.send(stringToUint8Array(source));
+  step.bodyRequest = bodyRequest;
+}
 
 function performImageFilter( generator ) {
   let filterField = step.renderer.inputFields[step.renderer.inputFields.length-1];
@@ -201,6 +222,130 @@ let step = {
   },
 };
 
+
+//
+// nrrd helper functions
+// TODO: put in separate file
+//
+function nrrdParse(nrrdArrayBuffer) {
+  // return the header fields and data
+  let newline = '\n'.charCodeAt(0); // value is 10
+  let header = "";
+  let dataOffset = 0;
+  let chars = new Uint8Array(nrrdArrayBuffer);
+  for (let index = 0; index < nrrdArrayBuffer.byteLength-1; index++) {
+    if (chars[index] == newline && chars[index+1] == newline) {
+      dataOffset = index + 2;
+      break;
+    }
+    header += String.fromCharCode(chars[index]);
+  }
+
+  let nrrd = {
+    header: {},
+    data: undefined,
+  };
+  header.split('\n').forEach(line => {
+    let [key, value] = line.split(":");
+    if (value && key[0] != '#') {
+      nrrd.header[key] = value.trim();
+    }
+  });
+
+  nrrd.data = new Int16Array(nrrdArrayBuffer, dataOffset);
+
+  return (nrrd);
+}
+
+function nrrdUnparse(nrrd) {
+  // make an array buffer out of the nrrd
+
+  let nrrdHeader = `NRRD0004
+# Complete NRRD file format specification at:
+# http://teem.sourceforge.net/nrrd/format.html
+type: short
+dimension: 3
+space: left-posterior-superior
+sizes: ${nrrd.header['sizes']}
+space directions: ${nrrd.header['space directions']}
+kinds: domain domain domain
+endian: little
+encoding: raw
+space origin: ${nrrd.header['space origin']}
+
+`;
+/*
+  let headerBytes = new Uint8Array(nrrdHeader.length);
+  for (let byteIndex = 0; byteIndex < headerBytes.length; byteIndex++) {
+    headerBytes[byteIndex] = nrrdHeader.charCodeAt(byteIndex);
+  }
+*/
+  let headerBytes = stringToUint8Array(nrrdHeader);
+
+
+  // account for old header values in nrrd data buffer
+  let bufferSize = nrrd.data.buffer.byteLength;
+  let dataSize = nrrd.data.byteLength;
+  let dataBytes = new Uint8Array(nrrd.data.buffer, bufferSize-dataSize);
+
+  let unparsed = new Uint8Array(headerBytes.length + dataBytes.length);
+  unparsed.set(headerBytes);
+  unparsed.set(dataBytes, headerBytes.length);
+
+  return (unparsed.buffer);
+}
+
+function nrrdToImageField(nrrdArrayBuffer) {
+  let nrrd = nrrdParse(nrrdArrayBuffer);
+  console.log(nrrd);
+}
+
+//
+// get some data to filter and send it back
+//
+function processSlicerStep() {
+  let url = "slicer/volume?id=MRHead";
+  let getRequest = new XMLHttpRequest();
+  getRequest.responseType = "arraybuffer";
+  getRequest.onload = function (event) {
+
+    console.log('got data');
+    let nrrd = nrrdParse(getRequest.response);
+    for (let index = 0; index < nrrd.data.length; index++) {
+      nrrd.data[index] = 200 - nrrd.data[index];
+    }
+    console.log('unparsing');
+    let resultArrayBuffer = nrrdUnparse(nrrd);
+
+    step.nrrd = nrrd;
+    step.response = getRequest.response;
+    step.resultArrayBuffer = resultArrayBuffer;
+
+    console.log('sending');
+    let postRequest = new XMLHttpRequest();
+    postRequest.responseType = "json";
+    postRequest.onload = function (event) {
+      console.log(postRequest.response);
+    };
+    postRequest.open("POST", url, true);
+    postRequest.send(new Uint8Array(resultArrayBuffer));
+
+    console.log('sent');
+    return;
+
+    // todo
+    /*
+    let arrayBuffer = getRequest.response;
+    let field = nrrdToImageField(arrayBuffer);
+    step.renderer.inputFields.push(field);
+    step.renderer.requestRender(step.view);
+    performImageFilter(GaussianGenerator);
+    */
+  };
+  getRequest.open("GET", url, true);
+  getRequest.send(null);
+}
+
 // once document is loaded...
 window.onload = function () {
 
@@ -249,107 +394,9 @@ window.onload = function () {
   onResize();
   window.onresize = onResize;
 
-  //
-  // helper functions
-  // TODO: put in separate file
-  //
-  function nrrdParse(nrrdArrayBuffer) {
-    // return the header fields and data
-    let newline = '\n'.charCodeAt(0); // value is 10
-    let header = "";
-    let dataOffset = 0;
-    let chars = new Uint8Array(nrrdArrayBuffer);
-    for (let index = 0; index < nrrdArrayBuffer.byteLength-1; index++) {
-      if (chars[index] == newline && chars[index+1] == newline) {
-        dataOffset = index + 2;
-        break;
-      }
-      header += String.fromCharCode(chars[index]);
-    }
 
-    let nrrd = {
-      header: {},
-      data: undefined,
-    };
-    header.split('\n').forEach(line => {
-      let [key, value] = line.split(":");
-      if (value && key[0] != '#') {
-        nrrd.header[key] = value.trim();
-      }
-    });
-
-    nrrd.data = new Int16Array(nrrdArrayBuffer, dataOffset);
-
-    return (nrrd);
-  }
-
-  function nrrdUnparse(nrrd) {
-    // make an array buffer out of the nrrd
-
-    let nrrdHeader = `NRRD0004
-# Complete NRRD file format specification at:
-# http://teem.sourceforge.net/nrrd/format.html
-type: short
-dimension: 3
-space: left-posterior-superior
-sizes: ${nrrd.header['sizes']}
-space directions: ${nrrd.header['space directions']}
-kinds: domain domain domain
-endian: little
-encoding: raw
-space origin: ${nrrd.header['space origin']}
-
-`;
-    let headerBytes = new Uint8Array(nrrdHeader.length);
-    for (let byteIndex = 0; byteIndex < headerBytes.length; byteIndex++) {
-      headerBytes[byteIndex] = nrrdHeader.charCodeAt(byteIndex);
-    }
-    let bodyBytes = new Uint8Array(nrrd.data.buffer);
-    let unparsed = new Uint8Array(headerBytes.length + bodyBytes.length);
-    unparsed.set(headerBytes);
-    unparsed.set(bodyBytes, headerBytes.length);
-
-    return (unparsed.buffer);
-  }
-
-  function nrrdToImageField(nrrdArrayBuffer) {
-    let nrrd = nrrdParse(nrrdArrayBuffer); 
-    console.log(nrrd);
-  }
-
-  //
-  // get some data to filter
-  //
-  let url = "slicer/volume?id=MRHead";
-  let getRequest = new XMLHttpRequest();
-  getRequest.responseType = "arraybuffer";
-  getRequest.onload = function (event) {
-
-    let nrrd = nrrdParse(getRequest.response); 
-    step.nrrd = nrrd;
-    for (let index = 0; index < nrrd.data.length; index++) {
-      nrrd.data[index] = 200 - nrrd.data[index];
-    }
-    let resultArrayBuffer = nrrdUnparse(nrrd);
-
-    let postRequest = new XMLHttpRequest();
-    postRequest.open("POST", url, true);
-    postRequest.send(resultArrayBuffer);
-    
-    console.log('sent');
-    return;
-
-    // todo
-    /*
-    let arrayBuffer = getRequest.response;
-    let field = nrrdToImageField(arrayBuffer);
-    step.renderer.inputFields.push(field);
-    step.renderer.requestRender(step.view);
-    performImageFilter(GaussianGenerator);
-    */
-  };
-  getRequest.open("GET", url, true);
-  getRequest.send(null);
+  processSlicerStep();
+  testREPL();
 }
 
 </script>
