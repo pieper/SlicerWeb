@@ -5,6 +5,17 @@
 
   <title>STEPPER - WebGL2 </title>
 
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/DicomMetaDictionary.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/BufferStream.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/ValueRepresentation.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/Tag.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/DicomMessage.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/normalizers.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/derivations.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/colors.js"></script>
+
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/js/gl-matrix-min.js"></script>
+
   <script type="text/javascript" src="http://pieper.github.io/sites/step/linear.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/fields.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/view.js"></script>
@@ -273,14 +284,7 @@ encoding: raw
 space origin: ${nrrd.header['space origin']}
 
 `;
-/*
-  let headerBytes = new Uint8Array(nrrdHeader.length);
-  for (let byteIndex = 0; byteIndex < headerBytes.length; byteIndex++) {
-    headerBytes[byteIndex] = nrrdHeader.charCodeAt(byteIndex);
-  }
-*/
   let headerBytes = stringToUint8Array(nrrdHeader);
-
 
   // account for old header values in nrrd data buffer
   let bufferSize = nrrd.data.buffer.byteLength;
@@ -294,9 +298,135 @@ space origin: ${nrrd.header['space origin']}
   return (unparsed.buffer);
 }
 
-function nrrdToImageField(nrrdArrayBuffer) {
-  let nrrd = nrrdParse(nrrdArrayBuffer);
-  console.log(nrrd);
+function nrrdToDICOMDataset(nrrd) {
+  // make a rough conversion from nrrd to dicom
+  // by filling in only what is needed for filtering
+  // TODO: get valid data from nrrd for data type to pixel info
+
+  console.log('converting', nrrd);
+
+  let sizes = nrrd.header['sizes'].split(" ").map(Number);
+  let origin = nrrd.header['space origin'].replace('(','').replace(')','').split(",").map(Number);
+
+  let directions = [];
+  let directionParts = nrrd.header['space directions'].split(')').slice(0,3)
+  directionParts.forEach(directionPart => {
+    let part = directionPart.replace('(','').replace(')','').split(',').map(Number);
+    directions.push(part);
+  });
+
+  let spacings = [];
+  let unitDirections = [];
+  directions.forEach(d => {
+    let spacing = Math.sqrt( d[0]*d[0] + d[1]*d[1] + d[2]*d[2] );
+    let unitDirection = [d[0]/spacing, d[1]/spacing, d[2]/spacing];
+    spacings.push(spacing);
+    unitDirections.push(unitDirection);
+  });
+
+  let dataset = {
+    "SOPClass": "EnhancedCTImage",
+    "Columns": String(sizes[0]),
+    "Rows": String(sizes[1]),
+    "NumberOfFrames": String(sizes[2]),
+    "SamplesPerPixel": 1,
+    "BitsStored": 16,
+    "HighBit": 15,
+    "WindowCenter": [ "84" ],
+    "WindowWidth": [ "168" ],
+    "BitsAllocated": 16,
+    "PixelRepresentation": 1,
+    "RescaleSlope": "1",
+    "RescaleIntercept": "0",
+    "SharedFunctionalGroups": {
+      "PlaneOrientation": {
+        "ImageOrientationPatient": [
+          String(unitDirections[0][0]),
+          String(unitDirections[0][1]),
+          String(unitDirections[0][2]),
+          String(unitDirections[1][0]),
+          String(unitDirections[1][1]),
+          String(unitDirections[1][2])
+        ]
+      },
+      "PixelMeasures": {
+        "PixelSpacing": [ String(spacings[0]), String(spacings[1]) ],
+        "SpacingBetweenSlices": String(spacings[2])
+      },
+      "PixelValueTransformation": {
+        "RescaleIntercept": "0",
+        "RescaleSlope": "1",
+        "RescaleType": "US"
+      }
+    },
+    "PixelData": nrrd.data
+  };
+
+  dataset.PerFrameFunctionalGroups = [];
+  for (let frameIndex of Array(sizes[2]).keys()) {
+    dataset.PerFrameFunctionalGroups.push({
+      "PlanePosition": {
+        "ImagePositionPatient": [
+          String(origin[0] + frameIndex * directions[2][0]),
+          String(origin[1] + frameIndex * directions[2][1]),
+          String(origin[2] + frameIndex * directions[2][2])
+        ]
+      },
+    });
+  }
+
+  return(dataset);
+}
+
+function nrrdLinearMapPixels(nrrd, slope=1, intercept=0) {
+  for (let index = 0; index < nrrd.data.length; index++) {
+    nrrd.data[index] = slope * nrrd.data[index] + intercept;
+  }
+}
+
+function nrrdPerformFilter(nrrd) {
+  let dataset = nrrdToDICOMDataset(nrrd);
+  let field = Field.fromDataset(dataset)[0];
+  step.renderer.inputFields.push(field);
+  step.renderer.requestRender(step.view);
+  performImageFilter(GaussianGenerator);
+  // todo: convert to promise
+}
+
+function filterAndSend(event) {
+  console.log('got data', event);
+
+  console.log('parsing');
+  let nrrd = nrrdParse(event.target.response);
+
+  step.nrrd = nrrd;
+
+  console.log('processing');
+  let operation = "filter";
+  if (operation == "linearMap") {
+    nrrdLinearMapPixels(nrrd, -1, 200);
+  } else if (operation == "filter") {
+    nrrdPerformFilter(nrrd);
+  }
+
+  console.log('unparsing');
+  let resultArrayBuffer = nrrdUnparse(nrrd);
+
+  step.nrrd = nrrd;
+  step.response = event.target.response;
+  step.resultArrayBuffer = resultArrayBuffer;
+
+  console.log('sending');
+  let postRequest = new XMLHttpRequest();
+  postRequest.responseType = "json";
+  postRequest.onload = function (event) {
+    console.log(postRequest.response);
+  };
+  postRequest.open("POST", event.target.responseURL, true);
+  postRequest.send(new Uint8Array(resultArrayBuffer));
+
+  console.log('sent');
+  return;
 }
 
 //
@@ -306,41 +436,7 @@ function processSlicerStep() {
   let url = "slicer/volume?id=MRHead";
   let getRequest = new XMLHttpRequest();
   getRequest.responseType = "arraybuffer";
-  getRequest.onload = function (event) {
-
-    console.log('got data');
-    let nrrd = nrrdParse(getRequest.response);
-    for (let index = 0; index < nrrd.data.length; index++) {
-      nrrd.data[index] = 200 - nrrd.data[index];
-    }
-    console.log('unparsing');
-    let resultArrayBuffer = nrrdUnparse(nrrd);
-
-    step.nrrd = nrrd;
-    step.response = getRequest.response;
-    step.resultArrayBuffer = resultArrayBuffer;
-
-    console.log('sending');
-    let postRequest = new XMLHttpRequest();
-    postRequest.responseType = "json";
-    postRequest.onload = function (event) {
-      console.log(postRequest.response);
-    };
-    postRequest.open("POST", url, true);
-    postRequest.send(new Uint8Array(resultArrayBuffer));
-
-    console.log('sent');
-    return;
-
-    // todo
-    /*
-    let arrayBuffer = getRequest.response;
-    let field = nrrdToImageField(arrayBuffer);
-    step.renderer.inputFields.push(field);
-    step.renderer.requestRender(step.view);
-    performImageFilter(GaussianGenerator);
-    */
-  };
+  getRequest.onload = filterAndSend;
   getRequest.open("GET", url, true);
   getRequest.send(null);
 }
