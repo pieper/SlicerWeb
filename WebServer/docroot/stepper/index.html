@@ -96,16 +96,11 @@ function performImageFilter( generator ) {
 
   step.generator.updateProgram();
 
-  let animationFrame = function() {
-    console.log(`image filtering`);
-    step.generator.generate();
-    step.renderer._render();
-    filterField.visible = 0;
-    derivedField0.visible = 1;
-    step.renderer.requestRender(step.view);
-  }
-  requestAnimationFrame(animationFrame);
-
+  console.log(`image filtering`);
+  step.generator.generate();
+  step.renderer._render();
+  filterField.visible = 0;
+  derivedField0.visible = 1;
   step.renderer.requestRender(step.view);
 }
 
@@ -389,8 +384,11 @@ function nrrdPerformFilter(nrrd) {
   let field = Field.fromDataset(dataset)[0];
   step.renderer.inputFields.push(field);
   step.renderer.requestRender(step.view);
-  performImageFilter(GaussianGenerator);
-  // todo: convert to promise
+  //performImageFilter(GaussianGenerator);
+  performImageFilter(BilateralGenerator);
+
+  // TODO: possibly changed nrrd header
+  nrrd.data = new Uint16Array(step.renderer.inputFields[1].generatedPixelData);
 }
 
 function filterAndSend(event) {
