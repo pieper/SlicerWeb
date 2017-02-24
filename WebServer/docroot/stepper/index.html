@@ -258,6 +258,7 @@ function nrrdParse(nrrdArrayBuffer) {
   });
 
   nrrd.data = new Int16Array(nrrdArrayBuffer, dataOffset);
+  nrrd.data = new Int16Array(nrrdArrayBuffer.slice(dataOffset));
 
   return (nrrd);
 }
