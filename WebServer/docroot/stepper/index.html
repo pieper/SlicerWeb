@@ -382,10 +382,14 @@ function getInputData(payload) {
   });
 }
 
-function performBilateralOperation(payload) {
-  console.log('performBilateralOperation', payload);
+function performFilterOperation(payload) {
+  console.log('performFilterOperation', payload);
   return new Promise(function(resolve,reject) {
-    nrrdPerformFilter(payload.nrrd);
+    if (payload.prov.inputData.type == 'bilateral') {
+      nrrdPerformFilter(payload.nrrd);
+    } else if (payload.prov.inputData.type == 'linearmap') {
+      nrrdLinearMapPixels(payload.nrrd, -1, 200 );
+    }
     payload.resultArrayBuffer = nrrdUnparse(payload.nrrd);
     resolve(payload);
   });
@@ -410,9 +414,9 @@ function postOutputData(payload) {
 }
 
 
-function handleBilateral(prov) {
+function handleFilter(prov) {
   getInputData({prov})
-  .then(performBilateralOperation)
+  .then(performFilterOperation)
   .then(postOutputData)
   .catch( error => {
     console.log('Something went wrong...', error);
@@ -426,8 +430,7 @@ function handleGrowCut(prov) {
 }
 
 let operations = {
-  'bilateral': handleBilateral,
-  'gaussian': handleGaussian,
+  'filter': handleFilter,
   'growcut': handleGrowCut,
 };
 
@@ -527,8 +530,9 @@ window.onload = function () {
     status: "open",
     desiredProvenance: {
       application: "stepper",
-      operation: "bilateral",
+      operation: "filter",
       inputData: {
+        type: 'linearmap',
         url: "http://localhost:2016/slicer/volume?id=MRHead"
       },
       outputData: {
