@@ -15,17 +15,18 @@
   <script type="text/javascript" src="http://pieper.github.io/sites/dcmio/colors.js"></script>
 
   <script type="text/javascript" src="http://pieper.github.io/sites/step/js/gl-matrix-min.js"></script>
+  <script type="text/javascript" src="http://pieper.github.io/sites/step/js/pouchdb-5.1.0.js"></script>
 
   <script type="text/javascript" src="http://pieper.github.io/sites/step/linear.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/fields.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/view.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/generators.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/renderer.js"></script>
-  <script type="text/javascript" src="http://pieper.github.io/sites/step/growcut.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/gaussian.js"></script>
-  <!-- <script type="text/javascript" src="http://pieper.github.io/sites/step/bilateral.js"></script> -->
-  <script type="text/javascript" src="stepper/bilateral.js"></script>
   <script type="text/javascript" src="http://pieper.github.io/sites/step/rasterizer.js"></script>
+
+  <script type="text/javascript" src="bilateral.js"></script>
+  <script type="text/javascript" src="growcut.js"></script>
 
 </head>
 
@@ -113,35 +114,28 @@ function performBilateral() {
   performImageFilter(BilateralGenerator);
 }
 
-function performGrowCut() {
-  console.log('starting performGrowCut');
-  let backgroundField = step.renderer.inputFields[step.renderer.inputFields.length-1];
-  if (!backgroundField || backgroundField.constructor.name != "ImageField") {
-    alert('Need to have a background image field');
-    return;
-  }
+function performGrowCut(backgroundField, labelField, iterations) {
 
+  console.log('starting performGrowCut');
+
+  let derivedImage = new DerivedImage([backgroundField.dataset]);
   let labelFields = [];
+  labelFields[0] = labelField;
+  labelField[1] = Field.fromDataset(derivedImage.dataset)[0];
+  step.renderer.inputFields.push(labelFields[1]);
   let strengthFields = [];
   [0,1].forEach(index=>{
-    let derivedImage = new DerivedImage([backgroundField.dataset]);
-    let labelField = Field.fromDataset(derivedImage.dataset)[0];
     let strengthField = Field.fromDataset(derivedImage.dataset)[0];
-    labelFields.push(labelField);
     strengthFields.push(strengthField);
-    step.renderer.inputFields.push(labelField);
     step.renderer.inputFields.push(strengthField);
     console.log('added field', index);
   });
+
   // TODO: don't need to upload texture of generated fields
   step.renderer.updateProgram();
-
   console.log('updated program');
 
-  backgroundField.visible = 0;
-  let iterations = 50;
-  let iteration = 0;
-  let animationFrame = function() {
+  for (let iteration of Array(iterations).keys()) {
 
     let inBuffer = iteration%2;
     let outBuffer = (iteration+1)%2;
@@ -160,11 +154,6 @@ function performGrowCut() {
     }
     step.growcut.uniforms.iteration.value = iteration;
 
-    labelFields[inBuffer].visible = 0;
-    strengthFields[inBuffer].visible = 0;
-    labelFields[outBuffer].visible = 1;
-    strengthFields[outBuffer].visible = 0;
-
     console.log(iteration,'generating');
     step.growcut.inputFields = [backgroundField,
                                 labelFields[inBuffer],
@@ -181,33 +170,12 @@ function performGrowCut() {
 
     step.growcut.generate();
 
-    console.log(iteration,'rendering');
-    step.renderer._render();
-
-    iteration++;
-
     if (iteration < iterations) {
-      // not finished, trigger another itertion
-      step.ui.bottomBar.progress = `Iteration ${iteration} of ${iterations}`;
-      //requestAnimationFrame(animationFrame); // continue iterating
+      console.log(`Iteration ${iteration} of ${iterations}`);
     } else {
-      step.ui.bottomBar.progress = `Finished ${iterations} iterations`;
-      [0,1].forEach(index=>{
-        labelFields[index].visible = 0;
-        strengthFields[index].visible = 0;
-      });
-      backgroundField.visible = 1;
-      labelFields[outBuffer].visible = 1;
-      step.renderer._render();
-      console.log('finished');
+      console.log(`Finished ${iterations} iterations`);
     }
   }
-  //requestAnimationFrame(animationFrame); // start the iterations
-  for (let i = 0; i < iterations; i++) {
-    animationFrame();
-  }
-
-  step.renderer.requestRender(step.view);
 }
 
 // TODO: avoid odd global used in fields and generators
@@ -258,9 +226,8 @@ function nrrdParse(nrrdArrayBuffer) {
     }
   });
 
-  nrrd.data = new Int16Array(nrrdArrayBuffer, dataOffset);
+  step.nrrdArrayBuffer = nrrdArrayBuffer;
   nrrd.data = new Int16Array(nrrdArrayBuffer.slice(dataOffset));
-
   return (nrrd);
 }
 
@@ -393,52 +360,89 @@ function nrrdPerformFilter(nrrd) {
   nrrd.data = new Uint16Array(step.renderer.inputFields[1].generatedPixelData);
 }
 
-function filterAndSend(event) {
-  console.log('got data', event);
-
-  console.log('parsing');
-  let nrrd = nrrdParse(event.target.response);
-
-  step.nrrd = nrrd;
-
-  console.log('processing');
-  let operation = "filter";
-  if (operation == "linearMap") {
-    nrrdLinearMapPixels(nrrd, -1, 200);
-  } else if (operation == "filter") {
-    nrrdPerformFilter(nrrd);
-  }
-
-  console.log('unparsing');
-  let resultArrayBuffer = nrrdUnparse(nrrd);
-
-  step.nrrd = nrrd;
-  step.response = event.target.response;
-  step.resultArrayBuffer = resultArrayBuffer;
-
-  console.log('sending');
-  let postRequest = new XMLHttpRequest();
-  postRequest.responseType = "json";
-  postRequest.onload = function (event) {
-    console.log(postRequest.response);
-  };
-  postRequest.open("POST", event.target.responseURL, true);
-  postRequest.send(new Uint8Array(resultArrayBuffer));
-
-  console.log('sent');
-  return;
+//
+// Promise-ified versions
+//
+function getInputData(payload) {
+  return new Promise(function(resolve,reject) {
+    let getRequest = new XMLHttpRequest();
+    getRequest.responseType = "arraybuffer";
+    getRequest.onload = function (event) {
+      payload.nrrd = nrrdParse(event.target.response);
+      resolve(payload);
+    };
+    getRequest.onerror = function () {
+      reject({
+        status: this.status,
+        statusText: getRequest.statusText
+      });
+    };
+    getRequest.open("GET", payload.prov.inputData.url, true);
+    getRequest.send(null);
+  });
 }
 
-//
-// get some data to filter and send it back
-//
-function processSlicerStep() {
-  let url = "slicer/volume?id=MRHead";
-  let getRequest = new XMLHttpRequest();
-  getRequest.responseType = "arraybuffer";
-  getRequest.onload = filterAndSend;
-  getRequest.open("GET", url, true);
-  getRequest.send(null);
+function performBilateralOperation(payload) {
+  console.log('performBilateralOperation', payload);
+  return new Promise(function(resolve,reject) {
+    nrrdPerformFilter(payload.nrrd);
+    payload.resultArrayBuffer = nrrdUnparse(payload.nrrd);
+    resolve(payload);
+  });
+}
+
+function postOutputData(payload) {
+  return new Promise(function(resolve,reject) {
+    let postRequest = new XMLHttpRequest();
+    postRequest.responseType = "json";
+    postRequest.onload = function (event) {
+      resolve(Date(), 'response', postRequest.response);
+    };
+    postRequest.onerror = function () {
+      reject({
+        status: this.status,
+        statusText: getRequest.statusText
+      });
+    };
+    postRequest.open("POST", payload.prov.outputData.url, true);
+    postRequest.send(new Uint8Array(payload.resultArrayBuffer));
+  });
+}
+
+
+function handleBilateral(prov) {
+  getInputData({prov})
+  .then(performBilateralOperation)
+  .then(postOutputData)
+  .catch( error => {
+    console.log('Something went wrong...', error);
+  });
+}
+
+function handleGaussian(prov) {
+}
+
+function handleGrowCut(prov) {
+}
+
+let operations = {
+  'bilateral': handleBilateral,
+  'gaussian': handleGaussian,
+  'growcut': handleGrowCut,
+};
+
+function canHandleOperation(operation) {
+  let prov = operation.desiredProvenance;
+  if (operation.type == 'ch.step'
+      && operation.status == 'open'
+      && prov
+      && prov.application == "stepper"
+      && prov.operation in operations) {
+    return(true);
+  } else {
+    console.log(`Skipping step that doesn't apply`);
+    return(false);
+  }
 }
 
 // once document is loaded...
@@ -481,7 +485,6 @@ window.onload = function () {
   });
   window.dispatchEvent(new Event('resize'));
 
-
   let onResize = function() {
     renderCanvas.width = window.innerWidth;
     renderCanvas.height = window.innerHeight;
@@ -489,9 +492,51 @@ window.onload = function () {
   onResize();
   window.onresize = onResize;
 
-
+  /* for testing
   processSlicerStep();
   testREPL();
+  */
+
+  step.operationsDB = new PouchDB('http://localhost:5984/operations');
+  step.operationsDB.changes({
+    live: true,
+    include_docs: true,
+    since: 'now',
+  }).on('change', (changeDoc) => {
+    if (canHandleOperation(changeDoc.doc)) {
+      changeDoc.doc.status = 'working';
+      step.operationsDB.put(changeDoc.doc)
+      .then(() => {
+        let desiredProvenance = changeDoc.doc.desiredProvenance;
+        operations[desiredProvenance.operation](desiredProvenance);
+      })
+      .catch((error) => {
+        console.log('Could not handle operation', error);
+      });
+    }
+  }).on('complete', (info) => {
+    console.log ('Database connection canceled', info);
+  }).on('error', (err) => {
+    console.log ('Database connection error', err);
+  });
+
+  /* for testing */
+
+  step.operationsDB.post({
+    type: "ch.step",
+    status: "open",
+    desiredProvenance: {
+      application: "stepper",
+      operation: "bilateral",
+      inputData: {
+        url: "http://localhost:2016/slicer/volume?id=MRHead"
+      },
+      outputData: {
+        url: "http://localhost:2016/slicer/volume?id=MRHead-filtered"
+      },
+    }
+  });
+
 }
 
 </script>
