@@ -631,7 +631,8 @@ class SlicerRequestHandler(object):
     if volumeNode == None or volumeArray == None:
       self.logMessage('Could not find requested volume')
       return None
-    if volumeNode.GetClassName() != "vtkMRMLScalarVolumeNode":
+    supportedNodes = ["vtkMRMLScalarVolumeNode","vtkMRMLLabelMapVolumeNode"]
+    if not volumeNode.GetClassName() in supportedNodes:
       self.logMessage('Can only get scalar volumes')
       return None
 
