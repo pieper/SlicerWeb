@@ -68,6 +68,7 @@ class GrowCutGenerator extends ProgrammaticGenerator {
           for (int k = -1; k <= 1; k++) {
             for (int j = -1; j <= 1; j++) {
               for (int i = -1; i <= 1; i++) {
+                if ( !(i == 0 && j == 0 && k == 0) ) {
                 if (i != 0 && j != 0 && k != 0) {
                   ivec3 neighborIndex = texelIndex + ivec3(i,j,k);
                   int neighborBackground = texelFetch(inputTexture0, neighborIndex, 0).r;
