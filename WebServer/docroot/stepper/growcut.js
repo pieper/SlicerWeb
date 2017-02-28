@@ -39,6 +39,7 @@ class GrowCutGenerator extends ProgrammaticGenerator {
       uniform int iteration;
       uniform ivec3 pixelDimensions;
       uniform vec3 textureToPixel;
+      uniform float slice;
 
       uniform isampler3D inputTexture0; // background
       uniform isampler3D inputTexture1; // label
@@ -52,7 +53,8 @@ class GrowCutGenerator extends ProgrammaticGenerator {
       void main()
       {
         ivec3 size = textureSize(inputTexture0, 0);
-        ivec3 texelIndex = ivec3(floor(interpolatedTextureCoordinate * vec3(size)));
+        vec3 coordinate = vec3(interpolatedTextureCoordinate.st, slice);
+        ivec3 texelIndex = ivec3(floor(coordinate * vec3(size)));
 
         int background = texelFetch(inputTexture0, texelIndex, 0).r;
         label = texelFetch(inputTexture1, texelIndex, 0).r;
@@ -69,7 +71,6 @@ class GrowCutGenerator extends ProgrammaticGenerator {
             for (int j = -1; j <= 1; j++) {
               for (int i = -1; i <= 1; i++) {
                 if ( !(i == 0 && j == 0 && k == 0) ) {
-                if (i != 0 && j != 0 && k != 0) {
                   ivec3 neighborIndex = texelIndex + ivec3(i,j,k);
                   int neighborBackground = texelFetch(inputTexture0, neighborIndex, 0).r;
                   int neighborStrength = texelFetch(inputTexture2, neighborIndex, 0).r;
