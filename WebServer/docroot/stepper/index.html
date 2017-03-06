@@ -85,7 +85,7 @@ function testOperations(operationsDB) {
       application: "stepper",
       operation: "growcut",
       inputData: {
-        iterations: 100,
+        iterations: 500,
         backgroundURL: "http://localhost:2016/slicer/volume?id=MRHead",
         labelMapURL: "http://localhost:2016/slicer/volume?id=MRHead-label"
       },
@@ -148,6 +148,7 @@ function performBilateral() {
 function performGrowCut(growCutGenerator, backgroundField, labelMapField, iterations) {
 
   console.log('starting performGrowCut');
+  console.time('performGrowCut');
 
   // create working buffers for strength and extra labelMap field
   let derivedImage = new DerivedImage([backgroundField.dataset]);
@@ -193,10 +194,9 @@ function performGrowCut(growCutGenerator, backgroundField, labelMapField, iterat
 
     growCutGenerator.generate();
 
-    if (1+iteration < iterations) {
-      console.log(`Iteration ${1+iteration} of ${iterations}`);
-    } else {
+    if (1+iteration == iterations) {
       console.log(`Finished ${iterations} iterations`);
+      console.timeEnd('performGrowCut');
     }
   }
 }
