@@ -16,6 +16,7 @@ except ImportError:
 import string
 import time
 import socket
+import uuid
 
 from BaseHTTPServer import HTTPServer
 import mimetypes
@@ -690,9 +691,120 @@ space origin: %%origin%%
     nrrdData.write(volumeArray.data)
     return nrrdData.getvalue()
 
+  def mrmlToThreejs(self):
+    """
+    Returns a json document string in the format supported by threejs
+    and described here: https://github.com/mrdoob/three.js/wiki/JSON-Geometry-format-4
+    """
+    exportScene = {
+      "metadata": {
+        "version": 4.4,
+        "type": "Object",
+        "generator": "3D Slicer.SlicerWeb.WebServer.mrmlToThreejs"
+      },
+      "geometries": [],
+      "materials": [],
+      "object": {
+        "uuid": str(uuid.uuid1()),
+        "type": "Scene",
+        "name": "Slicer Scene",
+        "children": []
+      }
+    }
+    sceneChildren = exportScene['object']['children']
+    sceneChildren.append({
+      "uuid": str(uuid.uuid1()),
+      "type": "Group",
+      "name": "Camera Group",
+      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,100,400,1],
+      "children": [
+        {
+          "uuid": str(uuid.uuid1()),
+          "type": "PerspectiveCamera",
+          "name": "PerspectiveCamera",
+          "matrix": [-1,0,0,0,0,1,0,0,0,0,-1,0,0,0,0,1],
+          "fov": 50,
+          "zoom": 1,
+          "near": 100,
+          "far": 10000,
+          "focus": 10,
+          "aspect": 1,
+        }
+      ]
+    })
+    sceneChildren.append({
+      "uuid": str(uuid.uuid1()),
+      "type": "DirectionalLight",
+      "name": "DirectionalLight 1",
+      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,5,10,7.5,1],
+      "color": 16777215,
+      "intensity": 1,
+    })
+    models = slicer.util.getNodes('vtkMRMLModelNode*')
+    for model in models.values():
+      display = model.GetDisplayNode()
+      materialUUID = str(uuid.uuid1())
+      c = display.GetColor()
+      color = int(255*255*255*c[0] + 255*255*c[1] + 255*c[2])
+      visible = display.GetVisibility() == 1
+      exportScene["materials"].append({
+        "uuid": materialUUID,
+        "type": "MeshPhongMaterial",
+        "color": color,
+        "side": 2
+      })
+      geometryUUID = str(uuid.uuid1())
+      vertices = []
+      faces = []
+      normals = []
+      exportScene["geometries"].append({
+        "uuid": geometryUUID,
+        "name": model.GetName(),
+        "type": "Geometry",
+        "data": {
+          "vertices": vertices,
+          "faces": faces,
+          "normals": normals,
+        }
+      })
+      polyData = model.GetPolyData()
+      pointNormals = polyData.GetPointData().GetNormals()
+      for pointIndex in xrange(polyData.GetNumberOfPoints()):
+        vertices.extend(polyData.GetPoint(pointIndex))
+        normals.extend(pointNormals.GetTuple3(pointIndex))
+      triangleFilter = vtk.vtkTriangleFilter()
+      triangleFilter.SetInputDataObject(polyData)
+      triangleFilter.Update()
+      triangles = triangleFilter.GetOutput()
+      triangleWithNormalBitmask = 32;
+      for cellIndex in xrange(triangles.GetNumberOfCells()):
+        face = [triangleWithNormalBitmask,]
+        pointIDs = triangles.GetCell(cellIndex).GetPointIds()
+        indices = [pointIDs.GetId(0), pointIDs.GetId(1), pointIDs.GetId(2)]
+        face.extend(indices) # vertex pointers
+        face.extend(indices) # normal pointers
+        faces.extend(face)
+      sceneChildren.append({
+        "name": model.GetName(),
+        "uuid": str(uuid.uuid1()),
+        "material": materialUUID,
+        "visible": visible,
+        "type": "Mesh",
+        "geometry": geometryUUID
+      })
+    return(json.dumps(exportScene))
 
   def mrml(self,cmd):
-    return ( json.dumps( slicer.util.getNodes('*').keys() ) )
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      format = q['format'][0].strip().lower()
+    except KeyError:
+      format = 'threejs'
+    if format == 'threejs':
+      return (self.mrmlToThreejs())
+    else:
+      return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
   def slice(self,cmd):
     """return a png for a slice view.
