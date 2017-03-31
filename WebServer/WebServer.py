@@ -754,36 +754,46 @@ space origin: %%origin%%
         "side": 2
       })
       geometryUUID = str(uuid.uuid1())
-      vertices = []
-      faces = []
-      normals = []
+      index = []
+      position = []
+      normal = []
       exportScene["geometries"].append({
         "uuid": geometryUUID,
         "name": model.GetName(),
-        "type": "Geometry",
+        "type": "BufferGeometry",
         "data": {
-          "vertices": vertices,
-          "faces": faces,
-          "normals": normals,
+          "attributes": {
+            "index": {
+              "itemSize": 1,
+              "type": "Uint16Array",
+              "array": index
+            },
+            "position": {
+              "itemSize": 3,
+              "type": "Float32Array",
+              "array": position
+            },
+            "normal": {
+              "itemSize": 3,
+              "type": "Float32Array",
+              "array": normal
+            },
+          }
         }
       })
       polyData = model.GetPolyData()
       pointNormals = polyData.GetPointData().GetNormals()
       for pointIndex in xrange(polyData.GetNumberOfPoints()):
-        vertices.extend(polyData.GetPoint(pointIndex))
-        normals.extend(pointNormals.GetTuple3(pointIndex))
+        position.extend(polyData.GetPoint(pointIndex))
+        normal.extend(pointNormals.GetTuple3(pointIndex))
       triangleFilter = vtk.vtkTriangleFilter()
       triangleFilter.SetInputDataObject(polyData)
       triangleFilter.Update()
       triangles = triangleFilter.GetOutput()
-      triangleWithNormalBitmask = 32;
       for cellIndex in xrange(triangles.GetNumberOfCells()):
-        face = [triangleWithNormalBitmask,]
         pointIDs = triangles.GetCell(cellIndex).GetPointIds()
         indices = [pointIDs.GetId(0), pointIDs.GetId(1), pointIDs.GetId(2)]
-        face.extend(indices) # vertex pointers
-        face.extend(indices) # normal pointers
-        faces.extend(face)
+        index.extend(indices)
       sceneChildren.append({
         "name": model.GetName(),
         "uuid": str(uuid.uuid1()),
