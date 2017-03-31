@@ -696,6 +696,14 @@ space origin: %%origin%%
     Returns a json document string in the format supported by threejs
     and described here: https://github.com/mrdoob/three.js/wiki/JSON-Geometry-format-4
     """
+    THREE = {
+      "TriangleFanDrawMode": 2,
+      "TriangleStripDrawMode": 1,
+      "TrianglesDrawMode": 0,
+      "FrontSide": 0,
+      "BackSide": 1,
+      "DoubleSide": 2,
+    }
     exportScene = {
       "metadata": {
         "version": 4.4,
@@ -747,11 +755,20 @@ space origin: %%origin%%
       c = display.GetColor()
       color = int(255*255*255*c[0] + 255*255*c[1] + 255*c[2])
       visible = display.GetVisibility() == 1
+      front = display.GetFrontfaceCulling() == 1
+      back = display.GetBackfaceCulling() == 1
+      side = THREE["FrontSide"]
+      if front and not back:
+        side = THREE["BackSide"]
+      if not front and not back:
+        side = THREE["DoubleSide"]
+      if back and front:
+        visible = False
       exportScene["materials"].append({
         "uuid": materialUUID,
         "type": "MeshPhongMaterial",
         "color": color,
-        "side": 2
+        "side": side
       })
       geometryUUID = str(uuid.uuid1())
       index = []
@@ -762,12 +779,12 @@ space origin: %%origin%%
         "name": model.GetName(),
         "type": "BufferGeometry",
         "data": {
+          "index": {
+            "itemSize": 1,
+            "type": "Uint16Array",
+            "array": index
+          },
           "attributes": {
-            "index": {
-              "itemSize": 1,
-              "type": "Uint16Array",
-              "array": index
-            },
             "position": {
               "itemSize": 3,
               "type": "Float32Array",
