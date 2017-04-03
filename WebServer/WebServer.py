@@ -33,6 +33,366 @@ except ImportError:
 hasImage = False
 
 #
+# glTFExporter
+#
+
+import base64
+
+class glTFExporter:
+  """ This work was partially funded by NIH grant 3P41RR013218.  """
+  def __init__(self,mrmlScene):
+    self.mrmlScene = mrmlScene
+
+  def export(self):
+    """
+    Returns a json document string in the format supported by glTF
+    and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
+    """
+
+    glTF = {
+      "scene": "defaultScene",
+      "scenes": {
+        "defaultScene": {
+          "nodes": ["node_1"]
+        }
+      },
+      "asset": {
+        "generator": "SlicerWeb.glTFExporter",
+        "premultipliedAlpha": True,
+        "profile": {
+          "api": "WebGL",
+          "version": "1.0.2"
+        },
+        "version": "1.0"
+      },
+    }
+
+    # from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
+    glTF["shaders"] = {
+        "Box0FS": {
+            "type": 35632,
+            "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0Owp2YXJ5aW5nIHZlYzMgdl9ub3JtYWw7CnVuaWZvcm0gdmVjNCB1X2RpZmZ1c2U7CnVuaWZvcm0gdmVjNCB1X3NwZWN1bGFyOwp1bmlmb3JtIGZsb2F0IHVfc2hpbmluZXNzOwp2b2lkIG1haW4odm9pZCkgewp2ZWMzIG5vcm1hbCA9IG5vcm1hbGl6ZSh2X25vcm1hbCk7CnZlYzQgY29sb3IgPSB2ZWM0KDAuLCAwLiwgMC4sIDAuKTsKdmVjNCBkaWZmdXNlID0gdmVjNCgwLiwgMC4sIDAuLCAxLik7CnZlYzQgc3BlY3VsYXI7CmRpZmZ1c2UgPSB1X2RpZmZ1c2U7CnNwZWN1bGFyID0gdV9zcGVjdWxhcjsKZGlmZnVzZS54eXogKj0gbWF4KGRvdChub3JtYWwsdmVjMygwLiwwLiwxLikpLCAwLik7CmNvbG9yLnh5eiArPSBkaWZmdXNlLnh5ejsKY29sb3IgPSB2ZWM0KGNvbG9yLnJnYiAqIGRpZmZ1c2UuYSwgZGlmZnVzZS5hKTsKZ2xfRnJhZ0NvbG9yID0gY29sb3I7Cn0K"
+        },
+        "Box0VS": {
+            "type": 35633,
+            "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0OwphdHRyaWJ1dGUgdmVjMyBhX3Bvc2l0aW9uOwphdHRyaWJ1dGUgdmVjMyBhX25vcm1hbDsKdmFyeWluZyB2ZWMzIHZfbm9ybWFsOwp1bmlmb3JtIG1hdDMgdV9ub3JtYWxNYXRyaXg7CnVuaWZvcm0gbWF0NCB1X21vZGVsVmlld01hdHJpeDsKdW5pZm9ybSBtYXQ0IHVfcHJvamVjdGlvbk1hdHJpeDsKdm9pZCBtYWluKHZvaWQpIHsKdmVjNCBwb3MgPSB1X21vZGVsVmlld01hdHJpeCAqIHZlYzQoYV9wb3NpdGlvbiwxLjApOwp2X25vcm1hbCA9IHVfbm9ybWFsTWF0cml4ICogYV9ub3JtYWw7CmdsX1Bvc2l0aW9uID0gdV9wcm9qZWN0aW9uTWF0cml4ICogcG9zOwp9Cg=="
+        }
+    }
+    glTF["skins"] = {}
+    glTF["techniques"] = {
+        "technique0": {
+            "attributes": {
+                "a_normal": "normal",
+                "a_position": "position"
+            },
+            "parameters": {
+                "diffuse": {
+                    "type": 35666
+                },
+                "modelViewMatrix": {
+                    "semantic": "MODELVIEW",
+                    "type": 35676
+                },
+                "normal": {
+                    "semantic": "NORMAL",
+                    "type": 35665
+                },
+                "normalMatrix": {
+                    "semantic": "MODELVIEWINVERSETRANSPOSE",
+                    "type": 35675
+                },
+                "position": {
+                    "semantic": "POSITION",
+                    "type": 35665
+                },
+                "projectionMatrix": {
+                    "semantic": "PROJECTION",
+                    "type": 35676
+                },
+                "shininess": {
+                    "type": 5126
+                },
+                "specular": {
+                    "type": 35666
+                }
+            },
+            "program": "program_0",
+            "states": {
+                "enable": [
+                    2929,
+                    2884
+                ]
+            },
+            "uniforms": {
+                "u_diffuse": "diffuse",
+                "u_modelViewMatrix": "modelViewMatrix",
+                "u_normalMatrix": "normalMatrix",
+                "u_projectionMatrix": "projectionMatrix",
+                "u_shininess": "shininess",
+                "u_specular": "specular"
+            }
+        }
+    }
+    glTF["programs"] = {
+        "program_0": {
+            "attributes": [
+                "a_normal",
+                "a_position"
+            ],
+            "fragmentShader": "Box0FS",
+            "vertexShader": "Box0VS"
+        }
+    }
+    glTF["nodes"] = {
+        "node_1": {
+            "children": [
+                "Geometry-mesh002Node"
+            ],
+            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 ],
+            "name": "Y_UP_Transform"
+        },
+        "Geometry-mesh002Node": {
+            "children": [],
+            "meshes": [
+                "Geometry-mesh002"
+            ],
+            "name": "Mesh"
+        }
+    }
+    glTF["meshes"] = {
+        "Geometry-mesh002": {
+            "name": "Mesh",
+            "primitives": [
+                {
+                    "attributes": {
+                        "NORMAL": "accessor_25",
+                        "POSITION": "accessor_23"
+                    },
+                    "indices": "accessor_21",
+                    "material": "Effect-Red",
+                    "mode": 4
+                }
+            ]
+        }
+    }
+    glTF["materials"] = {
+        "Effect-Red": {
+            "name": "Red",
+            "technique": "technique0",
+            "values": {
+                "diffuse": [ 0.3, 0, 0.8, 1 ],
+                "shininess": 256,
+                "specular": [ 0.4, 0.4, 0.4, 1 ]
+            }
+        }
+    }
+    glTF["buffers"] = {
+        "Box": {
+            "byteLength": 648,
+            "type": "arraybuffer",
+            "uri": "data:application/octet-stream;base64,AAABAAIAAwACAAEABAAFAAYABwAGAAUACAAJAAoACwAKAAkADAANAA4ADwAOAA0AEAARABIAEwASABEAFAAVABYAFwAWABUAAAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AAAAvwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/"
+        }
+    }
+    glTF["bufferViews"] = {
+        "bufferView_29": {
+            "buffer": "Box",
+            "byteLength": 72,
+            "byteOffset": 0,
+            "target": 34963
+        },
+        "bufferView_30": {
+            "buffer": "Box",
+            "byteLength": 576,
+            "byteOffset": 72,
+            "target": 34962
+        }
+    }
+    glTF["animations"] = {}
+    glTF["accessors"] = {
+        "accessor_21": {
+            "bufferView": "bufferView_29",
+            "byteOffset": 0,
+            "byteStride": 0,
+            "componentType": 5123,
+            "count": 36,
+            "type": "SCALAR"
+        },
+        "accessor_23": {
+            "bufferView": "bufferView_30",
+            "byteOffset": 0,
+            "byteStride": 12,
+            "componentType": 5126,
+            "count": 24,
+            "max": [ 0.5, 0.5, 0.5 ],
+            "min": [ -0.5, -0.5, -0.5 ],
+            "type": "VEC3"
+        },
+        "accessor_25": {
+            "bufferView": "bufferView_30",
+            "byteOffset": 288,
+            "byteStride": 12,
+            "componentType": 5126,
+            "count": 24,
+            "max": [ 1, 1, 1 ],
+            "min": [ -1, -1, -1 ],
+            "type": "VEC3"
+        }
+    }
+    return(json.dumps(glTF))
+
+
+    notes = """
+    THREE = {
+      "TriangleFanDrawMode": 2,
+      "TriangleStripDrawMode": 1,
+      "TrianglesDrawMode": 0,
+      "FrontSide": 0,
+      "BackSide": 1,
+      "DoubleSide": 2,
+    }
+    exportScene = {
+      "metadata": {
+        "version": 4.4,
+        "type": "Object",
+        "generator": "3D Slicer.SlicerWeb.WebServer.mrmlToThreejs"
+      },
+      "geometries": [],
+      "materials": [],
+      "object": {
+        "uuid": str(uuid.uuid1()),
+        "type": "Scene",
+        "name": "Slicer Scene",
+        "children": []
+      }
+    }
+    sceneChildren = exportScene['object']['children']
+    sceneChildren.append({
+      "uuid": str(uuid.uuid1()),
+      "type": "Group",
+      "name": "Camera Group",
+      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,100,400,1],
+      "children": [
+        {
+          "uuid": str(uuid.uuid1()),
+          "type": "PerspectiveCamera",
+          "name": "PerspectiveCamera",
+          "matrix": [-1,0,0,0,0,1,0,0,0,0,-1,0,0,0,0,1],
+          "fov": 50,
+          "zoom": 1,
+          "near": 100,
+          "far": 10000,
+          "focus": 10,
+          "aspect": 1,
+        }
+      ]
+    })
+    sceneChildren.append({
+      "uuid": str(uuid.uuid1()),
+      "type": "DirectionalLight",
+      "name": "DirectionalLight 1",
+      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,5,10,7.5,1],
+      "color": 16777215,
+      "intensity": 1,
+    })
+    models = slicer.util.getNodes('vtkMRMLModelNode*')
+    for model in models.values():
+      display = model.GetDisplayNode()
+      materialUUID = str(uuid.uuid1())
+      c = display.GetColor()
+      color = int(255*255*255*c[0] + 255*255*c[1] + 255*c[2])
+      visible = display.GetVisibility() == 1
+      front = display.GetFrontfaceCulling() == 1
+      back = display.GetBackfaceCulling() == 1
+      side = THREE["FrontSide"]
+      if front and not back:
+        side = THREE["BackSide"]
+      if not front and not back:
+        side = THREE["DoubleSide"]
+      if back and front:
+        visible = False
+      exportScene["materials"].append({
+        "uuid": materialUUID,
+        "type": "MeshPhongMaterial",
+        "color": color,
+        "side": side
+      })
+      geometryUUID = str(uuid.uuid1())
+      index = []
+      position = []
+      normal = []
+      exportScene["geometries"].append({
+        "uuid": geometryUUID,
+        "name": model.GetName(),
+        "type": "BufferGeometry",
+        "data": {
+          "index": {
+            "itemSize": 1,
+            "type": "Uint16Array",
+            "array": index
+          },
+          "attributes": {
+            "position": {
+              "itemSize": 3,
+              "type": "Float32Array",
+              "array": position
+            },
+            "normal": {
+              "itemSize": 3,
+              "type": "Float32Array",
+              "array": normal
+            },
+          }
+        }
+      })
+      polyData = model.GetPolyData()
+      pointNormals = polyData.GetPointData().GetNormals()
+      for pointIndex in xrange(polyData.GetNumberOfPoints()):
+        position.extend(polyData.GetPoint(pointIndex))
+        normal.extend(pointNormals.GetTuple3(pointIndex))
+      triangleFilter = vtk.vtkTriangleFilter()
+      triangleFilter.SetInputDataObject(polyData)
+      triangleFilter.Update()
+      triangles = triangleFilter.GetOutput()
+      for cellIndex in xrange(triangles.GetNumberOfCells()):
+        pointIDs = triangles.GetCell(cellIndex).GetPointIds()
+        indices = [pointIDs.GetId(0), pointIDs.GetId(1), pointIDs.GetId(2)]
+        index.extend(indices)
+      sceneChildren.append({
+        "name": model.GetName(),
+        "uuid": str(uuid.uuid1()),
+        "material": materialUUID,
+        "visible": visible,
+        "type": "Mesh",
+        "geometry": geometryUUID
+      })
+    return(json.dumps(exportScene))
+
+    def fiberToThreejs(self):
+
+      # TODO 
+      # - access fibers
+      # - change to glTF
+      lineDisplayNode = getNode("*LineDisplay*")
+
+      tuber = vtk.vtkTubeFilter()
+      tuber.SetInput(lineDisplayNode.GetOutputPolyData())
+
+      tubes = tuber.GetOutput()
+      tubes.Update()
+      scalars = tubes.GetPointData().GetArray(0)
+      scalars.SetName("scalars")
+
+      triangles = vtk.vtkTriangleFilter()
+      triangles.SetInput(tubes)
+
+      colorNode = lineDisplayNode.GetColorNode()
+      lookupTable = vtk.vtkLookupTable()
+      lookupTable.DeepCopy(colorNode.GetLookupTable())
+      lookupTable.SetTableRange(0,1)
+
+   """
+
+#
 # WebServer
 #
 
@@ -821,15 +1181,43 @@ space origin: %%origin%%
       })
     return(json.dumps(exportScene))
 
+    def fiberToThreejs(self):
+
+      # TODO 
+      # - access fibers
+      # - change to glTF
+      lineDisplayNode = getNode("*LineDisplay*")
+
+      tuber = vtk.vtkTubeFilter()
+      tuber.SetInput(lineDisplayNode.GetOutputPolyData())
+
+      tubes = tuber.GetOutput()
+      tubes.Update()
+      scalars = tubes.GetPointData().GetArray(0)
+      scalars.SetName("scalars")
+
+      triangles = vtk.vtkTriangleFilter()
+      triangles.SetInput(tubes)
+
+      colorNode = lineDisplayNode.GetColorNode()
+      lookupTable = vtk.vtkLookupTable()
+      lookupTable.DeepCopy(colorNode.GetLookupTable())
+      lookupTable.SetTableRange(0,1)
+
+
+
   def mrml(self,cmd):
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     try:
       format = q['format'][0].strip().lower()
     except KeyError:
-      format = 'threejs'
+      format = 'glTF'
     if format == 'threejs':
       return (self.mrmlToThreejs())
+    if format == 'glTF':
+      exporter = glTFExporter(slicer.mrmlScene)
+      return (exporter.export())
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
