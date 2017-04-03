@@ -42,23 +42,32 @@ class glTFExporter:
   """ This work was partially funded by NIH grant 3P41RR013218.  """
   def __init__(self,mrmlScene):
     self.mrmlScene = mrmlScene
+    self.glFT = self.sceneDefaults()
 
   def export(self):
     """
     Returns a json document string in the format supported by glTF
     and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
+    some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
     """
+    models = slicer.util.getNodes('vtkMRMLModelNode*')
+    for model in models.values():
+      self.addModel(model)
+      break
+    return(json.dumps(self.glTF))
 
-    glTF = {
+  def sceneDefaults(self):
+    self.glTF = {
       "scene": "defaultScene",
       "scenes": {
         "defaultScene": {
-          "nodes": ["node_1"]
+          "nodes": []
         }
       },
+      "nodes": {},
       "asset": {
         "generator": "SlicerWeb.glTFExporter",
-        "premultipliedAlpha": True,
+        "premultipliedAlpha": False,
         "profile": {
           "api": "WebGL",
           "version": "1.0.2"
@@ -66,20 +75,19 @@ class glTFExporter:
         "version": "1.0"
       },
     }
-
-    # from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
-    glTF["shaders"] = {
-        "Box0FS": {
+    self.glTF["animations"] = {}
+    self.glTF["skins"] = {}
+    self.glTF["shaders"] = {
+        "FragmentShader": {
             "type": 35632,
             "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0Owp2YXJ5aW5nIHZlYzMgdl9ub3JtYWw7CnVuaWZvcm0gdmVjNCB1X2RpZmZ1c2U7CnVuaWZvcm0gdmVjNCB1X3NwZWN1bGFyOwp1bmlmb3JtIGZsb2F0IHVfc2hpbmluZXNzOwp2b2lkIG1haW4odm9pZCkgewp2ZWMzIG5vcm1hbCA9IG5vcm1hbGl6ZSh2X25vcm1hbCk7CnZlYzQgY29sb3IgPSB2ZWM0KDAuLCAwLiwgMC4sIDAuKTsKdmVjNCBkaWZmdXNlID0gdmVjNCgwLiwgMC4sIDAuLCAxLik7CnZlYzQgc3BlY3VsYXI7CmRpZmZ1c2UgPSB1X2RpZmZ1c2U7CnNwZWN1bGFyID0gdV9zcGVjdWxhcjsKZGlmZnVzZS54eXogKj0gbWF4KGRvdChub3JtYWwsdmVjMygwLiwwLiwxLikpLCAwLik7CmNvbG9yLnh5eiArPSBkaWZmdXNlLnh5ejsKY29sb3IgPSB2ZWM0KGNvbG9yLnJnYiAqIGRpZmZ1c2UuYSwgZGlmZnVzZS5hKTsKZ2xfRnJhZ0NvbG9yID0gY29sb3I7Cn0K"
         },
-        "Box0VS": {
+        "VertexShader": {
             "type": 35633,
             "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0OwphdHRyaWJ1dGUgdmVjMyBhX3Bvc2l0aW9uOwphdHRyaWJ1dGUgdmVjMyBhX25vcm1hbDsKdmFyeWluZyB2ZWMzIHZfbm9ybWFsOwp1bmlmb3JtIG1hdDMgdV9ub3JtYWxNYXRyaXg7CnVuaWZvcm0gbWF0NCB1X21vZGVsVmlld01hdHJpeDsKdW5pZm9ybSBtYXQ0IHVfcHJvamVjdGlvbk1hdHJpeDsKdm9pZCBtYWluKHZvaWQpIHsKdmVjNCBwb3MgPSB1X21vZGVsVmlld01hdHJpeCAqIHZlYzQoYV9wb3NpdGlvbiwxLjApOwp2X25vcm1hbCA9IHVfbm9ybWFsTWF0cml4ICogYV9ub3JtYWw7CmdsX1Bvc2l0aW9uID0gdV9wcm9qZWN0aW9uTWF0cml4ICogcG9zOwp9Cg=="
         }
     }
-    glTF["skins"] = {}
-    glTF["techniques"] = {
+    self.glTF["techniques"] = {
         "technique0": {
             "attributes": {
                 "a_normal": "normal",
@@ -133,17 +141,20 @@ class glTFExporter:
             }
         }
     }
-    glTF["programs"] = {
+    self.glTF["programs"] = {
         "program_0": {
             "attributes": [
                 "a_normal",
                 "a_position"
             ],
-            "fragmentShader": "Box0FS",
-            "vertexShader": "Box0VS"
+            "fragmentShader": "FragmentShader",
+            "vertexShader": "VertexShader"
         }
     }
-    glTF["nodes"] = {
+
+  def addModel(self, model):
+    """Add a mrml model node as a glTF node"""
+    self.glTF["nodes"][model.GetID()] = {
         "node_1": {
             "children": [
                 "Geometry-mesh002Node"
@@ -159,7 +170,8 @@ class glTFExporter:
             "name": "Mesh"
         }
     }
-    glTF["meshes"] = {
+    self.glTF["scenes"]["defaultScene"]["nodes"].append(model.GetID())
+    self.glTF["meshes"] = {
         "Geometry-mesh002": {
             "name": "Mesh",
             "primitives": [
@@ -175,7 +187,7 @@ class glTFExporter:
             ]
         }
     }
-    glTF["materials"] = {
+    self.glTF["materials"] = {
         "Effect-Red": {
             "name": "Red",
             "technique": "technique0",
@@ -186,14 +198,14 @@ class glTFExporter:
             }
         }
     }
-    glTF["buffers"] = {
+    self.glTF["buffers"] = {
         "Box": {
             "byteLength": 648,
             "type": "arraybuffer",
             "uri": "data:application/octet-stream;base64,AAABAAIAAwACAAEABAAFAAYABwAGAAUACAAJAAoACwAKAAkADAANAA4ADwAOAA0AEAARABIAEwASABEAFAAVABYAFwAWABUAAAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AAAAvwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/"
         }
     }
-    glTF["bufferViews"] = {
+    self.glTF["bufferViews"] = {
         "bufferView_29": {
             "buffer": "Box",
             "byteLength": 72,
@@ -207,8 +219,7 @@ class glTFExporter:
             "target": 34962
         }
     }
-    glTF["animations"] = {}
-    glTF["accessors"] = {
+    self.glTF["accessors"] = {
         "accessor_21": {
             "bufferView": "bufferView_29",
             "byteOffset": 0,
@@ -238,7 +249,6 @@ class glTFExporter:
             "type": "VEC3"
         }
     }
-    return(json.dumps(glTF))
 
 
     notes = """
@@ -369,7 +379,7 @@ class glTFExporter:
 
     def fiberToThreejs(self):
 
-      # TODO 
+      # TODO
       # - access fibers
       # - change to glTF
       lineDisplayNode = getNode("*LineDisplay*")
