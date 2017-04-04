@@ -169,16 +169,20 @@ class glTFExporter:
     """Add a mrml model node as a glTF node"""
     display = model.GetDisplayNode()
 
+    if model.GetName().endswith('Volume Slice'):
+      print('skipping ', model.GetName())
+      return
+
     self.glTF["nodes"][model.GetID()] = {
             "children": [
                 "Geometry_"+model.GetID()
             ],
-            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, random.random(), random.random(), random.random(), 1 ],
+            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 ],
             "name": "Y_UP_Transform"
         }
     self.glTF["nodes"]["Geometry_"+model.GetID()] = {
             "children": [],
-            "matrix": [ 0.001, 0, 0, 0, 0, 0, 0.001, 0, 0, 0.001, 0, 0, random.random(), random.random(), random.random(), 1 ],
+            "matrix": [ 0.1, 0, 0, 0, 0, 0, 0.1, 0, 0, 0.1, 0, 0, 0, 0, 0, 1 ],
             "meshes": [
                 "Mesh_"+model.GetID()
             ],
@@ -193,7 +197,7 @@ class glTFExporter:
                     "NORMAL": "Accessor_Normal_"+model.GetID(),
                     "POSITION": "Accessor_Position_"+model.GetID()
                 },
-                "indices": "Accessor_Indices_"+model.GetID(),
+                "indices": "Accessor_StripIndices_"+model.GetID(),
                 "material": "Material_"+model.GetID(),
                 "mode": 4
             }
@@ -218,19 +222,17 @@ class glTFExporter:
 
     # position
     pointFloatArray = polyData.GetPoints().GetData()
-    pointNumpyArray = vtk.util.numpy_support(pointFloatArray)
+    pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray)
     base64PointArray = base64.b64encode(pointNumpyArray)
     bounds = polyData.GetBounds()
 
-    self.glTF["buffers"]["BufferPosition_"+model.GetID()] = {
+    self.glTF["buffers"]["Buffer_Position_"+model.GetID()] = {
         "byteLength": len(base64PointArray),
         "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64PointArray
-        "min": [bounds[0],bounds[2],bounds[4]],
-        "max": [bounds[1],bounds[3],bounds[5]],
+        "uri": "data:application/octet-stream;base64,"+base64PointArray,
     }
     self.glTF["bufferViews"]["BufferView_Position_"+model.GetID()] = {
-        "buffer": "BufferPosition_"+model.GetID(),
+        "buffer": "Buffer_Position_"+model.GetID(),
         "byteLength": len(base64PointArray),
         "byteOffset": 0,
         "target": 34962
@@ -241,20 +243,20 @@ class glTFExporter:
         "byteStride": 12,
         "componentType": 5126,
         "count": pointFloatArray.GetNumberOfTuples(),
-        "type": "VEC3"
+        "type": "VEC3",
+        "min": [bounds[0],bounds[2],bounds[4]],
+        "max": [bounds[1],bounds[3],bounds[5]]
     }
 
     # point
     normalFloatArray = polyData.GetPointData().GetArray('Normals')
-    normalNumpyArray = vtk.util.numpy_support(normalFloatArray)
+    normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
     base64NormalArray = base64.b64encode(normalNumpyArray)
 
     self.glTF["buffers"]["Buffer_Normal_"+model.GetID()] = {
         "byteLength": len(base64NormalArray),
         "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64NormalArray
-        "min": [bounds[0],bounds[2],bounds[4]],
-        "max": [bounds[1],bounds[3],bounds[5]],
+        "uri": "data:application/octet-stream;base64,"+base64NormalArray,
     }
     self.glTF["bufferViews"]["BufferView_Normal_"+model.GetID()] = {
         "buffer": "Buffer_Normal_"+model.GetID(),
@@ -267,33 +269,33 @@ class glTFExporter:
         "byteOffset": 0,
         "byteStride": 12,
         "componentType": 5126,
-        "max": [ 1, 1, 1 ],
-        "min": [ -1, -1, -1 ],
+        "min": [ -1., -1., -1. ],
+        "max": [ 1., 1., 1. ],
         "count": normalFloatArray.GetNumberOfTuples(),
         "type": "VEC3"
     }
 
     # indices
     stripIndices = polyData.GetStrips().GetData()
-    stripIndicesNumpyArray = vtk.util.numpy_support(stripIndices)
+    stripIndicesNumpyArray = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
     base64StripIndices = base64.b64encode(stripIndicesNumpyArray)
 
     self.glTF["buffers"]["Buffer_StripIndices_"+model.GetID()] = {
         "byteLength": len(base64PointArray),
         "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64PointArray
+        "uri": "data:application/octet-stream;base64,"+base64StripIndices
     }
     self.glTF["bufferViews"]["BufferView_StripIndices_"+model.GetID()] = {
         "buffer": "Buffer_StripIndices_"+model.GetID(),
-        "byteLength": len(base64StripIndices),
         "byteOffset": 0,
+        "byteLength": 4 * stripIndices.GetNumberOfTuples(),
         "target": 34963
     }
     self.glTF["accessors"]["Accessor_StripIndices_"+model.GetID()] = {
         "bufferView": "BufferView_StripIndices_"+model.GetID(),
         "byteOffset": 0,
         "byteStride": 0,
-        "componentType": 5123,
+        "componentType": 5125,
         "count": len(stripIndicesNumpyArray),
         "type": "SCALAR"
     }
