@@ -178,7 +178,7 @@ class glTFExporter:
         }
     self.glTF["nodes"]["Geometry_"+model.GetID()] = {
             "children": [],
-            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, random.random(), random.random(), random.random(), 1 ],
+            "matrix": [ 0.001, 0, 0, 0, 0, 0, 0.001, 0, 0, 0.001, 0, 0, random.random(), random.random(), random.random(), 1 ],
             "meshes": [
                 "Mesh_"+model.GetID()
             ],
@@ -200,7 +200,7 @@ class glTFExporter:
         ]
     }
     self.glTF["materials"]["Material_"+model.GetID()] = {
-        "name": "Red",
+        "name": "Material_"+model.GetID(),
         "technique": "technique0",
         "values": {
             "diffuse": list(display.GetColor()),
@@ -208,184 +208,99 @@ class glTFExporter:
             "specular": [ 0.4, 0.4, 0.4, 1 ]
         }
     }
+
+    #
+    # for the polyData, create a set of
+    # buffer, bufferView, and accessor
+    # for the position, normal, and triangle strip indices
+    #
     polyData = model.GetPolyData()
+
+    # position
     pointFloatArray = polyData.GetPoints().GetData()
     pointNumpyArray = vtk.util.numpy_support(pointFloatArray)
     base64PointArray = base64.b64encode(pointNumpyArray)
+    bounds = polyData.GetBounds()
 
-    self.glTF["buffers"]["Buffer_"+model.GetID()] = {
-        "byteLength": 648,
+    self.glTF["buffers"]["BufferPosition_"+model.GetID()] = {
+        "byteLength": len(base64PointArray),
         "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,AAABAAIAAwACAAEABAAFAAYABwAGAAUACAAJAAoACwAKAAkADAANAA4ADwAOAA0AEAARABIAEwASABEAFAAVABYAFwAWABUAAAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AAAAvwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/"
+        "uri": "data:application/octet-stream;base64,"+base64PointArray
+        "min": [bounds[0],bounds[2],bounds[4]],
+        "max": [bounds[1],bounds[3],bounds[5]],
     }
-    self.glTF["bufferViews"]["BufferView_Indices_"+model.GetID()] = {
-        "buffer": "Buffer_"+model.GetID(),
-        "byteLength": 72,
+    self.glTF["bufferViews"]["BufferView_Position_"+model.GetID()] = {
+        "buffer": "BufferPosition_"+model.GetID(),
+        "byteLength": len(base64PointArray),
+        "byteOffset": 0,
+        "target": 34962
+    }
+    self.glTF["accessors"]["Accessor_Position_"+model.GetID()] = {
+        "bufferView": "BufferView_Position_"+model.GetID(),
+        "byteOffset": 0,
+        "byteStride": 12,
+        "componentType": 5126,
+        "count": pointFloatArray.GetNumberOfTuples(),
+        "type": "VEC3"
+    }
+
+    # point
+    normalFloatArray = polyData.GetPointData().GetArray('Normals')
+    normalNumpyArray = vtk.util.numpy_support(normalFloatArray)
+    base64NormalArray = base64.b64encode(normalNumpyArray)
+
+    self.glTF["buffers"]["Buffer_Normal_"+model.GetID()] = {
+        "byteLength": len(base64NormalArray),
+        "type": "arraybuffer",
+        "uri": "data:application/octet-stream;base64,"+base64NormalArray
+        "min": [bounds[0],bounds[2],bounds[4]],
+        "max": [bounds[1],bounds[3],bounds[5]],
+    }
+    self.glTF["bufferViews"]["BufferView_Normal_"+model.GetID()] = {
+        "buffer": "Buffer_Normal_"+model.GetID(),
+        "byteLength": len(base64NormalArray),
+        "byteOffset": 0,
+        "target": 34962
+    }
+    self.glTF["accessors"]["Accessor_Normal_"+model.GetID()] = {
+        "bufferView": "BufferView_Normal_"+model.GetID(),
+        "byteOffset": 0,
+        "byteStride": 12,
+        "componentType": 5126,
+        "max": [ 1, 1, 1 ],
+        "min": [ -1, -1, -1 ],
+        "count": normalFloatArray.GetNumberOfTuples(),
+        "type": "VEC3"
+    }
+
+    # indices
+    stripIndices = polyData.GetStrips().GetData()
+    stripIndicesNumpyArray = vtk.util.numpy_support(stripIndices)
+    base64StripIndices = base64.b64encode(stripIndicesNumpyArray)
+
+    self.glTF["buffers"]["Buffer_StripIndices_"+model.GetID()] = {
+        "byteLength": len(base64PointArray),
+        "type": "arraybuffer",
+        "uri": "data:application/octet-stream;base64,"+base64PointArray
+    }
+    self.glTF["bufferViews"]["BufferView_StripIndices_"+model.GetID()] = {
+        "buffer": "Buffer_StripIndices_"+model.GetID(),
+        "byteLength": len(base64StripIndices),
         "byteOffset": 0,
         "target": 34963
     }
-    self.glTF["bufferViews"]["BufferView_PositionNormal_"+model.GetID()] = {
-        "buffer": "Buffer_"+model.GetID(),
-        "byteLength": 576,
-        "byteOffset": 72,
-        "target": 34962
-    }
-    self.glTF["accessors"]["Accessor_Indices_"+model.GetID()] = {
-        "bufferView": "BufferView_Indices_"+model.GetID(),
+    self.glTF["accessors"]["Accessor_StripIndices_"+model.GetID()] = {
+        "bufferView": "BufferView_StripIndices_"+model.GetID(),
         "byteOffset": 0,
         "byteStride": 0,
         "componentType": 5123,
-        "count": 36,
+        "count": len(stripIndicesNumpyArray),
         "type": "SCALAR"
     }
-    self.glTF["accessors"]["Accessor_Position_"+model.GetID()] = {
-        "bufferView": "BufferView_PositionNormal_"+model.GetID(),
-        "byteOffset": 0,
-        "byteStride": 12,
-        "componentType": 5126,
-        "count": 24,
-        "max": [ 0.5, 0.5, 0.5 ],
-        "min": [ -0.5, -0.5, -0.5 ],
-        "type": "VEC3"
-    }
-    self.glTF["accessors"]["Accessor_Normal_"+model.GetID()] = {
-        "bufferView": "BufferView_PositionNormal_"+model.GetID(),
-        "byteOffset": 288,
-        "byteStride": 12,
-        "componentType": 5126,
-        "count": 24,
-        "max": [ 1, 1, 1 ],
-        "min": [ -1, -1, -1 ],
-        "type": "VEC3"
-    }
+
 
 
     notes = """
-    THREE = {
-      "TriangleFanDrawMode": 2,
-      "TriangleStripDrawMode": 1,
-      "TrianglesDrawMode": 0,
-      "FrontSide": 0,
-      "BackSide": 1,
-      "DoubleSide": 2,
-    }
-    exportScene = {
-      "metadata": {
-        "version": 4.4,
-        "type": "Object",
-        "generator": "3D Slicer.SlicerWeb.WebServer.mrmlToThreejs"
-      },
-      "geometries": [],
-      "materials": [],
-      "object": {
-        "uuid": str(uuid.uuid1()),
-        "type": "Scene",
-        "name": "Slicer Scene",
-        "children": []
-      }
-    }
-    sceneChildren = exportScene['object']['children']
-    sceneChildren.append({
-      "uuid": str(uuid.uuid1()),
-      "type": "Group",
-      "name": "Camera Group",
-      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,100,400,1],
-      "children": [
-        {
-          "uuid": str(uuid.uuid1()),
-          "type": "PerspectiveCamera",
-          "name": "PerspectiveCamera",
-          "matrix": [-1,0,0,0,0,1,0,0,0,0,-1,0,0,0,0,1],
-          "fov": 50,
-          "zoom": 1,
-          "near": 100,
-          "far": 10000,
-          "focus": 10,
-          "aspect": 1,
-        }
-      ]
-    })
-    sceneChildren.append({
-      "uuid": str(uuid.uuid1()),
-      "type": "DirectionalLight",
-      "name": "DirectionalLight 1",
-      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,5,10,7.5,1],
-      "color": 16777215,
-      "intensity": 1,
-    })
-    models = slicer.util.getNodes('vtkMRMLModelNode*')
-    for model in models.values():
-      display = model.GetDisplayNode()
-      materialUUID = str(uuid.uuid1())
-      c = display.GetColor()
-      color = int(255*255*255*c[0] + 255*255*c[1] + 255*c[2])
-      visible = display.GetVisibility() == 1
-      front = display.GetFrontfaceCulling() == 1
-      back = display.GetBackfaceCulling() == 1
-      side = THREE["FrontSide"]
-      if front and not back:
-        side = THREE["BackSide"]
-      if not front and not back:
-        side = THREE["DoubleSide"]
-      if back and front:
-        visible = False
-      exportScene["materials"].append({
-        "uuid": materialUUID,
-        "type": "MeshPhongMaterial",
-        "color": color,
-        "side": side
-      })
-      geometryUUID = str(uuid.uuid1())
-      index = []
-      position = []
-      normal = []
-      exportScene["geometries"].append({
-        "uuid": geometryUUID,
-        "name": model.GetName(),
-        "type": "BufferGeometry",
-        "data": {
-          "index": {
-            "itemSize": 1,
-            "type": "Uint16Array",
-            "array": index
-          },
-          "attributes": {
-            "position": {
-              "itemSize": 3,
-              "type": "Float32Array",
-              "array": position
-            },
-            "normal": {
-              "itemSize": 3,
-              "type": "Float32Array",
-              "array": normal
-            },
-          }
-        }
-      })
-      polyData = model.GetPolyData()
-      pointNormals = polyData.GetPointData().GetNormals()
-      for pointIndex in xrange(polyData.GetNumberOfPoints()):
-        position.extend(polyData.GetPoint(pointIndex))
-        normal.extend(pointNormals.GetTuple3(pointIndex))
-      triangleFilter = vtk.vtkTriangleFilter()
-      triangleFilter.SetInputDataObject(polyData)
-      triangleFilter.Update()
-      triangles = triangleFilter.GetOutput()
-      for cellIndex in xrange(triangles.GetNumberOfCells()):
-        pointIDs = triangles.GetCell(cellIndex).GetPointIds()
-        indices = [pointIDs.GetId(0), pointIDs.GetId(1), pointIDs.GetId(2)]
-        index.extend(indices)
-      sceneChildren.append({
-        "name": model.GetName(),
-        "uuid": str(uuid.uuid1()),
-        "material": materialUUID,
-        "visible": visible,
-        "type": "Mesh",
-        "geometry": geometryUUID
-      })
-    return(json.dumps(exportScene))
-
     def fiberToThreejs(self):
 
       # TODO
