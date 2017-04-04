@@ -3,6 +3,7 @@ from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
 import logging
+import random
 import sys
 import select
 import urlparse
@@ -50,10 +51,11 @@ class glTFExporter:
     and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
     some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
     """
+    self.sceneDefaults()
     models = slicer.util.getNodes('vtkMRMLModelNode*')
     for model in models.values():
       self.addModel(model)
-      break
+      # break
     return(json.dumps(self.glTF))
 
   def sceneDefaults(self):
@@ -70,9 +72,9 @@ class glTFExporter:
         "premultipliedAlpha": False,
         "profile": {
           "api": "WebGL",
-          "version": "1.0.2"
+          "version": "1.0"
         },
-        "version": "1.0"
+        "version": "1.1"
       },
     }
     self.glTF["animations"] = {}
@@ -154,82 +156,83 @@ class glTFExporter:
 
   def addModel(self, model):
     """Add a mrml model node as a glTF node"""
+    display = model.GetDisplayNode()
+
     self.glTF["nodes"][model.GetID()] = {
-        "node_1": {
             "children": [
-                "Geometry-mesh002Node"
+                "Geometry-"+model.GetID()
             ],
-            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 ],
+            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 1.5*random.random(), 1.5*random.random(), 1.5*random.random(), 1 ],
             "name": "Y_UP_Transform"
-        },
-        "Geometry-mesh002Node": {
+        }
+    self.glTF["nodes"]["Geometry-"+model.GetID()] = {
             "children": [],
+            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 1.5*random.random(), 1.5*random.random(), 1.5*random.random(), 1 ],
             "meshes": [
-                "Geometry-mesh002"
+                "Mesh-"+model.GetID()
             ],
             "name": "Mesh"
         }
-    }
     self.glTF["scenes"]["defaultScene"]["nodes"].append(model.GetID())
     self.glTF["meshes"] = {
-        "Geometry-mesh002": {
+        "Mesh-"+model.GetID(): {
             "name": "Mesh",
             "primitives": [
                 {
                     "attributes": {
-                        "NORMAL": "accessor_25",
-                        "POSITION": "accessor_23"
+                        "NORMAL": "Accessor-Normal-"+model.GetID(),
+                        "POSITION": "Accessor-Position-"+model.GetID()
                     },
-                    "indices": "accessor_21",
-                    "material": "Effect-Red",
+                    "indices": "Accessor-Indices-"+model.GetID(),
+                    "material": "Material-"+model.GetID(),
                     "mode": 4
                 }
             ]
         }
     }
     self.glTF["materials"] = {
-        "Effect-Red": {
+        "Material-"+model.GetID(): {
             "name": "Red",
             "technique": "technique0",
             "values": {
-                "diffuse": [ 0.3, 0, 0.8, 1 ],
-                "shininess": 256,
+                "diffuse": list(display.GetColor()),
+                "shininess": [255],
                 "specular": [ 0.4, 0.4, 0.4, 1 ]
             }
         }
     }
     self.glTF["buffers"] = {
-        "Box": {
+        "Buffer-"+model.GetID(): {
             "byteLength": 648,
             "type": "arraybuffer",
             "uri": "data:application/octet-stream;base64,AAABAAIAAwACAAEABAAFAAYABwAGAAUACAAJAAoACwAKAAkADAANAA4ADwAOAA0AEAARABIAEwASABEAFAAVABYAFwAWABUAAAAAvwAAAL8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAvwAAAL8AAAA/AAAAPwAAAL8AAAC/AAAAvwAAAL8AAAC/AAAAPwAAAD8AAAA/AAAAPwAAAL8AAAA/AAAAPwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAvwAAAD8AAAA/AAAAPwAAAD8AAAA/AAAAvwAAAD8AAAC/AAAAPwAAAD8AAAC/AAAAvwAAAL8AAAA/AAAAvwAAAD8AAAA/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAvwAAAL8AAAC/AAAAvwAAAD8AAAC/AAAAPwAAAL8AAAC/AAAAPwAAAD8AAAC/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAAAAAAIA/AAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAAAAAAAAgL8AAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAACAPwAAAAAAAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAAAAAAAAgD8AAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAACAvwAAAAAAAAAAAAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/AAAAAAAAAAAAAIC/"
         }
     }
     self.glTF["bufferViews"] = {
-        "bufferView_29": {
-            "buffer": "Box",
+        "BufferView-Indices-"+model.GetID(): {
+            "buffer": "Buffer-"+model.GetID(),
             "byteLength": 72,
             "byteOffset": 0,
             "target": 34963
         },
-        "bufferView_30": {
-            "buffer": "Box",
+        "BufferView-PositionNormal"+model.GetID(): {
+            "buffer": "Buffer-"+model.GetID(),
             "byteLength": 576,
             "byteOffset": 72,
             "target": 34962
         }
     }
     self.glTF["accessors"] = {
-        "accessor_21": {
-            "bufferView": "bufferView_29",
+        "Accessor-Indices-"+model.GetID(): {
+            "bufferView": "BufferView-Indices-"+model.GetID(),
             "byteOffset": 0,
             "byteStride": 0,
             "componentType": 5123,
             "count": 36,
             "type": "SCALAR"
         },
-        "accessor_23": {
-            "bufferView": "bufferView_30",
+        "Accessor-Position-"+model.GetID(): {
+            "bufferView": "BufferView-PositionNormal"+model.GetID(),
             "byteOffset": 0,
             "byteStride": 12,
             "componentType": 5126,
@@ -238,8 +241,8 @@ class glTFExporter:
             "min": [ -0.5, -0.5, -0.5 ],
             "type": "VEC3"
         },
-        "accessor_25": {
-            "bufferView": "bufferView_30",
+        "Accessor-Normal-"+model.GetID(): {
+            "bufferView": "BufferView-PositionNormal"+model.GetID(),
             "byteOffset": 288,
             "byteStride": 12,
             "componentType": 5126,
