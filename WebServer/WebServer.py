@@ -52,15 +52,21 @@ class glTFExporter:
     and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
     some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
     """
-    models = slicer.util.getNodes('vtkMRMLModelNode*')
-    nodesToExport = len(models)
-    nodeCount = 0
+
+    # global scene settings
     self.sceneDefaults()
+
+    # things specific to each model node
+    models = slicer.util.getNodes('vtkMRMLModelNode*')
     for model in models.values():
       self.addModel(model)
-      nodeCount += 1
-      if nodeCount >= nodesToExport:
-        break
+
+    # things specific to each fiber node
+    fibers = slicer.util.getNodes('vtkMRMLFiberBundleNode*')
+    for fiber in fibers.values():
+      model = self.fiberToModel(fiber)
+      self.addModel(model)
+
     return(json.dumps(self.glTF))
 
   def sceneDefaults(self):
@@ -71,6 +77,9 @@ class glTFExporter:
           "nodes": []
         }
       },
+      "extensionsUsed": [
+        "KHR_materials_common"
+      ],
       "asset": {
         "generator": "SlicerWeb.glTFExporter",
         "premultipliedAlpha": False,
@@ -167,50 +176,64 @@ class glTFExporter:
 
   def addModel(self, model):
     """Add a mrml model node as a glTF node"""
+    triangles = vtk.vtkTriangleFilter()
+    triangles.SetInputDataObject(model.GetPolyData())
+    triangles.Update()
+    polyData = triangles.GetOutput()
     display = model.GetDisplayNode()
+    diffuseColor = [0.2, 0.6, 0.8]
+    if display:
+      diffuseColor = list(display.GetColor())
+    modelID = model.GetID()
+    if not modelID:
+      modelID = model.GetName()
 
     if model.GetName().endswith('Volume Slice'):
       print('skipping ', model.GetName())
       return
 
-    self.glTF["nodes"][model.GetID()] = {
-            "children": [
-                "Geometry_"+model.GetID()
-            ],
-            "matrix": [ 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 ],
-            "name": "Y_UP_Transform"
-        }
-    self.glTF["nodes"]["Geometry_"+model.GetID()] = {
+    self.glTF["nodes"][modelID] = {
             "children": [],
-            "matrix": [ 0.1, 0, 0, 0, 0, 0, 0.1, 0, 0, 0.1, 0, 0, 0, 0, 0, 1 ],
+            "matrix": [ 1, 0, 0, 0,
+                        0, 1, 0, 0,
+                        0, 0, 1, 0,
+                        0, 0, 0, 1. ],
             "meshes": [
-                "Mesh_"+model.GetID()
+                "Mesh_"+modelID
             ],
             "name": "Mesh"
         }
-    self.glTF["scenes"]["defaultScene"]["nodes"].append(model.GetID())
-    self.glTF["meshes"]["Mesh_"+model.GetID()] = {
-        "name": "Mesh_"+model.GetID(),
+    self.glTF["scenes"]["defaultScene"]["nodes"].append(modelID)
+    glTriangles = 4
+    self.glTF["meshes"]["Mesh_"+modelID] = {
+        "name": "Mesh_"+modelID,
         "primitives": [
             {
                 "attributes": {
-                    "NORMAL": "Accessor_Normal_"+model.GetID(),
-                    "POSITION": "Accessor_Position_"+model.GetID()
+                    "NORMAL": "Accessor_Normal_"+modelID,
+                    "POSITION": "Accessor_Position_"+modelID
                 },
-                "indices": "Accessor_StripIndices_"+model.GetID(),
-                "material": "Material_"+model.GetID(),
-                "mode": 4
+                "indices": "Accessor_Indices_"+modelID,
+                "material": "Material_"+modelID,
+                "mode": glTriangles
             }
         ]
     }
-    self.glTF["materials"]["Material_"+model.GetID()] = {
-        "name": "Material_"+model.GetID(),
-        "technique": "technique0",
-        "values": {
-            "diffuse": list(display.GetColor()),
-            "shininess": [255],
-            "specular": [ 0.4, 0.4, 0.4, 1 ]
-        }
+    self.glTF["materials"]["Material_"+modelID] = {
+        "name": "Material_"+modelID,
+        "extensions": {
+            "KHR_materials_common": {
+                "doubleSided": False,
+                "technique": "PHONG",
+                "transparent": False,
+                "values": {
+                    "ambient": [ 0, 0, 0, 1 ],
+                    "diffuse": diffuseColor,
+                    "emission": [ 0, 0, 0, 1 ],
+                    "specular": [ 0.174994, 0.174994, 0.174994, 1 ]
+                }
+            }
+        },
     }
 
     #
@@ -218,27 +241,27 @@ class glTFExporter:
     # buffer, bufferView, and accessor
     # for the position, normal, and triangle strip indices
     #
-    polyData = model.GetPolyData()
 
     # position
     pointFloatArray = polyData.GetPoints().GetData()
     pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray)
+    pointNumpyArray /= 1000.  # convert to meters
     base64PointArray = base64.b64encode(pointNumpyArray)
     bounds = polyData.GetBounds()
 
-    self.glTF["buffers"]["Buffer_Position_"+model.GetID()] = {
+    self.glTF["buffers"]["Buffer_Position_"+modelID] = {
         "byteLength": len(base64PointArray),
         "type": "arraybuffer",
         "uri": "data:application/octet-stream;base64,"+base64PointArray,
     }
-    self.glTF["bufferViews"]["BufferView_Position_"+model.GetID()] = {
-        "buffer": "Buffer_Position_"+model.GetID(),
+    self.glTF["bufferViews"]["BufferView_Position_"+modelID] = {
+        "buffer": "Buffer_Position_"+modelID,
         "byteLength": len(base64PointArray),
         "byteOffset": 0,
         "target": 34962
     }
-    self.glTF["accessors"]["Accessor_Position_"+model.GetID()] = {
-        "bufferView": "BufferView_Position_"+model.GetID(),
+    self.glTF["accessors"]["Accessor_Position_"+modelID] = {
+        "bufferView": "BufferView_Position_"+modelID,
         "byteOffset": 0,
         "byteStride": 12,
         "componentType": 5126,
@@ -253,19 +276,19 @@ class glTFExporter:
     normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
     base64NormalArray = base64.b64encode(normalNumpyArray)
 
-    self.glTF["buffers"]["Buffer_Normal_"+model.GetID()] = {
+    self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
         "byteLength": len(base64NormalArray),
         "type": "arraybuffer",
         "uri": "data:application/octet-stream;base64,"+base64NormalArray,
     }
-    self.glTF["bufferViews"]["BufferView_Normal_"+model.GetID()] = {
-        "buffer": "Buffer_Normal_"+model.GetID(),
+    self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
+        "buffer": "Buffer_Normal_"+modelID,
         "byteLength": len(base64NormalArray),
         "byteOffset": 0,
         "target": 34962
     }
-    self.glTF["accessors"]["Accessor_Normal_"+model.GetID()] = {
-        "bufferView": "BufferView_Normal_"+model.GetID(),
+    self.glTF["accessors"]["Accessor_Normal_"+modelID] = {
+        "bufferView": "BufferView_Normal_"+modelID,
         "byteOffset": 0,
         "byteStride": 12,
         "componentType": 5126,
@@ -275,31 +298,73 @@ class glTFExporter:
         "type": "VEC3"
     }
 
-    # indices
+    # indices for triangle strips
+    # (not finished because it turns out aframe's glTF loader
+    # only supports lines and triangles)
+    stripFolly = """
+    stripCount = polyData.GetNumberOfStrips()
     stripIndices = polyData.GetStrips().GetData()
-    stripIndicesNumpyArray = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
-    base64StripIndices = base64.b64encode(stripIndicesNumpyArray)
+    stripVTKIndices = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
+    stripGLIndices = numpy.zeros(stripCount+len(stripVTKIndices), dtype='uint32')
 
-    self.glTF["buffers"]["Buffer_StripIndices_"+model.GetID()] = {
+    stripVTKIndex = 0
+    stripGLIndex = 0
+    while stripVTKIndex < len(stripVTKIndices):
+      stripSize = stripVTKIndices[stripVTKIndex]
+      stripGLIndices[stripGLIndex:stripGLIndex+stripSize] = stripVTKIndices[stripVTKIndex+1:stripVTKIndex+1+stripSize]
+      stripGLIndices[stripGLIndex+stripSize+1] = stripGLIndices[stripGLIndex+stripSize]
+      firstIndexNextStrip = stripVTKIndex + stripSize + 2
+      if firstIndexNextStrip < len(stripVTKIndices):
+        stripGLIndices[stripGLIndex+stripSize+2] = stripVTKIndices[firstIndexNextStrip]
+      stripVTKIndex += 1+stripSize
+      stripGLIndex += stripSize
+
+    print(stripVTKIndices)
+    print(stripGLIndices)
+
+    base64StripIndices = base64.b64encode(stripGLIndices)
+    """
+
+    # indices
+    triangleCount = polyData.GetNumberOfPolys()
+    triangleIndices = polyData.GetPolys().GetData()
+    triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
+    # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
+    triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
+    base64Indices = base64.b64encode(numpy.asarray(triangleIndexNumpyArray, order='C'))
+
+    self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
         "byteLength": len(base64PointArray),
         "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64StripIndices
+        "uri": "data:application/octet-stream;base64,"+base64Indices
     }
-    self.glTF["bufferViews"]["BufferView_StripIndices_"+model.GetID()] = {
-        "buffer": "Buffer_StripIndices_"+model.GetID(),
+    self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
+        "buffer": "Buffer_Indices_"+modelID,
         "byteOffset": 0,
-        "byteLength": 4 * stripIndices.GetNumberOfTuples(),
+        "byteLength": 4 * len(triangleIndexNumpyArray),
         "target": 34963
     }
-    self.glTF["accessors"]["Accessor_StripIndices_"+model.GetID()] = {
-        "bufferView": "BufferView_StripIndices_"+model.GetID(),
+    self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
+        "bufferView": "BufferView_Indices_"+modelID,
         "byteOffset": 0,
         "byteStride": 0,
         "componentType": 5125,
-        "count": len(stripIndicesNumpyArray),
+        "count": len(triangleIndexNumpyArray),
         "type": "SCALAR"
     }
 
+  def fiberToModel(self,fiber):
+    """Convert a vtkMRMLFiberBundleNode into a dummy vtkMRMLModelNode
+    so it can use the same converter"""
+    tuber = vtk.vtkTubeFilter()
+    tuber.SetInputDataObject(fiber.GetPolyData())
+    tuber.Update()
+    polyData = tuber.GetOutput()
+    polyData.GetPointData().GetArray('TubeNormals').SetName('Normals')
+    model = slicer.vtkMRMLModelNode()
+    model.SetName("ModelFrom_"+fiber.GetID())
+    model.SetAndObservePolyData(polyData)
+    return(model)
 
 
     notes = """
@@ -1119,7 +1184,7 @@ space origin: %%origin%%
 
     def fiberToThreejs(self):
 
-      # TODO 
+      # TODO
       # - access fibers
       # - change to glTF
       lineDisplayNode = getNode("*LineDisplay*")
