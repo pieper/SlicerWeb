@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="https://aframe.io/releases/0.5.0/aframe.min.js"></script>
+    <script src="slivr/components/aabb-collider.js"></script>
+    <script src="slivr/components/grab.js"></script>
+    <script src="slivr/components/ground.js"></script>
+  </head>
+  <body>
+
+    <a-scene>
+      <a-sky color="#7483E9"></a-sky>
+      <a-entity ground></a-sky>
+
+      <!-- The MRML scene -->
+      <a-entity position="0 0 -.1">
+        <a-entity position="0 1.6 0" scale="3 3 3" rotation="-90 0 0">
+          <a-gltf-model id='mrml' src='slicer/mrml'></a-gltf-model>
+          <a-gltf-model id='tracts'></a-gltf-model>
+        </a-entity>
+      </a-entity>
+
+      <a-sphere id='probe' class='grabbable' scale=".01 .01 .01" position="0 1.5 0"></a-sphere>
+
+      <!-- Controllers -->
+      <a-entity hand-controls="left" aabb-collider="objects: .grabbable;" grab></a-entity>
+      <a-entity hand-controls="right" aabb-collider="objects: .grabbable;" grab></a-entity>
+
+    </a-scene>
+
+  </body>
+
+  <script>
+  document.addEventListener("DOMContentLoaded", event => {
+
+    let mrml = document.querySelector('#mrml');
+    let probe = document.querySelector('#probe');
+    probe.addEventListener('released', event => {
+      let position = event.target.getAttribute("position");
+      console.log(`Position is now ${position.x} ${position.y} ${position.z}`);
+      let worldPosition = new THREE.Vector4(position.x, position.y, position.z, 1);
+      let worldToMRML = new THREE.Matrix4()
+      worldToMRML.getInverse(mrml.object3D.matrixWorld);
+      let mrmlPosition = worldPosition.applyMatrix4(worldToMRML);
+      mrmlPosition.multiplyScalar(1000); // convert to mm
+      console.log(`MRML position is ${mrmlPosition.x} ${mrmlPosition.y} ${mrmlPosition.z}`);
+
+      let request = `slicer/fiducial?r=${mrmlPosition.x}&a=${mrmlPosition.y}&s=${mrmlPosition.z}`;
+      let tractographyRequest = new XMLHttpRequest();
+      tractographyRequest.open('GET', request);
+      console.log('requested: ', request);
+      tractographyRequest.onreadystatechange = function() {
+        if (tractographyRequest.readyState == 4) {
+          console.log('tractography finished');
+          let tracts = document.querySelector('#tracts');
+          tracts.setAttribute('src', 'slicer/mrml?id=vtkMRMLFiberBundleNode3&'+Date.now());
+        }
+      };
+      tractographyRequest.send();
+    });
+  });
+  </script>
+</html>

@@ -41,31 +41,40 @@ hasImage = False
 import base64
 
 class glTFExporter:
-  """ This work was partially funded by NIH grant 3P41RR013218.  """
+  """
+  Export a subset of mrml data to glTF format (https://www.khronos.org/gltf).
+
+  This could be factored to a separate module, but it's developed
+  here for simplicity of reloading and debugging.
+
+  This work was partially funded by NIH grant 3P41RR013218.
+  """
   def __init__(self,mrmlScene):
     self.mrmlScene = mrmlScene
-    self.glFT = self.sceneDefaults()
+    self.sceneDefaults()
 
-  def export(self):
+  def export(self,nodeFilter=lambda node: True):
     """
     Returns a json document string in the format supported by glTF
     and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
     some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
-    """
 
-    # global scene settings
-    self.sceneDefaults()
+    nodeFilter is a callable that returns true if the node should be included in the export
+    """
 
     # things specific to each model node
     models = slicer.util.getNodes('vtkMRMLModelNode*')
     for model in models.values():
-      self.addModel(model)
+      if nodeFilter(model):
+        self.addModel(model)
 
     # things specific to each fiber node
     fibers = slicer.util.getNodes('vtkMRMLFiberBundleNode*')
     for fiber in fibers.values():
-      model = self.fiberToModel(fiber)
-      self.addModel(model)
+      if nodeFilter(fiber):
+        model = self.fiberToModel(fiber)
+        if model:
+          self.addModel(model)
 
     return(json.dumps(self.glTF))
 
@@ -184,8 +193,12 @@ class glTFExporter:
     diffuseColor = [0.2, 0.6, 0.8]
     if display:
       diffuseColor = list(display.GetColor())
+    else:
+      color = model.GetAttribute('color')
+      if color:
+        diffuseColor = json.loads(color)
     modelID = model.GetID()
-    if not modelID:
+    if modelID is None:
       modelID = model.GetName()
 
     if model.GetName().endswith('Volume Slice'):
@@ -355,42 +368,37 @@ class glTFExporter:
 
   def fiberToModel(self,fiber):
     """Convert a vtkMRMLFiberBundleNode into a dummy vtkMRMLModelNode
-    so it can use the same converter"""
+    so it can use the same converter.
+    Note: need to use attributes to send color since we cannot
+    add a display node to the dummy node since it is not in a scene.
+    """
     tuber = vtk.vtkTubeFilter()
     tuber.SetInputDataObject(fiber.GetPolyData())
     tuber.Update()
     polyData = tuber.GetOutput()
-    polyData.GetPointData().GetArray('TubeNormals').SetName('Normals')
+    normalsArray = polyData.GetPointData().GetArray('TubeNormals')
+    if not normalsArray:
+      return None
+    normalsArray.SetName('Normals')
     model = slicer.vtkMRMLModelNode()
     model.SetName("ModelFrom_"+fiber.GetID())
     model.SetAndObservePolyData(polyData)
+    tubeDisplay = fiber.GetTubeDisplayNode()
+    if tubeDisplay:
+      color = json.dumps(list(tubeDisplay.GetColor()))
+      model.SetAttribute("color", color)
     return(model)
 
-
     notes = """
-    def fiberToThreejs(self):
-
       # TODO
-      # - access fibers
-      # - change to glTF
-      lineDisplayNode = getNode("*LineDisplay*")
-
-      tuber = vtk.vtkTubeFilter()
-      tuber.SetInput(lineDisplayNode.GetOutputPolyData())
-
-      tubes = tuber.GetOutput()
-      tubes.Update()
+      # fa colors per vertex
       scalars = tubes.GetPointData().GetArray(0)
       scalars.SetName("scalars")
-
-      triangles = vtk.vtkTriangleFilter()
-      triangles.SetInput(tubes)
 
       colorNode = lineDisplayNode.GetColorNode()
       lookupTable = vtk.vtkLookupTable()
       lookupTable.DeepCopy(colorNode.GetLookupTable())
       lookupTable.SetTableRange(0,1)
-
    """
 
 #
@@ -689,6 +697,9 @@ class SlicerRequestHandler(object):
       elif cmd.find('/volume') == 0:
         responseBody = self.volume(cmd, requestBody)
         contentType = 'application/octet-stream',
+      elif cmd.find('/fiducial') == 0:
+        responseBody = self.fiducial(cmd, requestBody)
+        contentType = 'application/json',
       else:
         responseBody = "unknown command \"" + cmd + "\""
     except:
@@ -1052,6 +1063,35 @@ space origin: %%origin%%
     nrrdData.write(volumeArray.data)
     return nrrdData.getvalue()
 
+  def fiducial(self, cmd, requestBody):
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      fiducialID = q['id'][0].strip()
+    except KeyError:
+      fiducialID = 'vtkMRMLMarkupsFiducialNode*'
+    try:
+      index = q['index'][0].strip()
+    except KeyError:
+      index = 0
+    try:
+      r = q['r'][0].strip()
+    except KeyError:
+      r = 0
+    try:
+      a = q['a'][0].strip()
+    except KeyError:
+      a = 0
+    try:
+      s = q['s'][0].strip()
+    except KeyError:
+      s = 0
+
+    fiducialNode = slicer.util.getNode(fiducialID)
+    fiducialNode.SetNthFiducialPosition(index, float(r), float(a), float(s));
+    return "{'result': 'ok'}"
+
+
   def mrmlToThreejs(self):
     """
     Returns a json document string in the format supported by threejs
@@ -1214,11 +1254,18 @@ space origin: %%origin%%
       format = q['format'][0].strip().lower()
     except KeyError:
       format = 'glTF'
+    try:
+      id_ = q['id'][0].strip().lower()
+    except KeyError:
+      id_ = None
     if format == 'threejs':
       return (self.mrmlToThreejs())
     if format == 'glTF':
+      nodeFilter = lambda node: True
+      if id_:
+        nodeFilter = lambda node: node.GetID().lower() == id_
       exporter = glTFExporter(slicer.mrmlScene)
-      return (exporter.export())
+      return (exporter.export(nodeFilter))
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
