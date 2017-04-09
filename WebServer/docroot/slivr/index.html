@@ -32,33 +32,47 @@
   </body>
 
   <script>
+
+  let mrml, probe, tracts;
+
+  let tractographyRequest = undefined;
+
+  function updateProbe(event) {
+    if (tractographyRequest != undefined) {
+      return;
+    }
+    let position = event.target.getAttribute("position");
+    let worldPosition = new THREE.Vector4(position.x, position.y, position.z, 1);
+    let worldToMRML = new THREE.Matrix4()
+    worldToMRML.getInverse(mrml.object3D.matrixWorld);
+    let mrmlPosition = worldPosition.applyMatrix4(worldToMRML);
+    mrmlPosition.multiplyScalar(1000); // convert to mm
+
+    let request = `slicer/fiducial?r=${mrmlPosition.x}&a=${mrmlPosition.y}&s=${mrmlPosition.z}`;
+    tractographyRequest = new XMLHttpRequest();
+    tractographyRequest.open('GET', request);
+    console.log('requested: ', request);
+    tractographyRequest.onreadystatechange = function() {
+      if (tractographyRequest.readyState == 4) {
+        tracts.setAttribute('src', 'slicer/mrml?id=vtkMRMLFiberBundleNode1&'+Date.now());
+      }
+    };
+    tractographyRequest.send();
+  }
+
   document.addEventListener("DOMContentLoaded", event => {
 
-    let mrml = document.querySelector('#mrml');
-    let probe = document.querySelector('#probe');
-    probe.addEventListener('released', event => {
-      let position = event.target.getAttribute("position");
-      console.log(`Position is now ${position.x} ${position.y} ${position.z}`);
-      let worldPosition = new THREE.Vector4(position.x, position.y, position.z, 1);
-      let worldToMRML = new THREE.Matrix4()
-      worldToMRML.getInverse(mrml.object3D.matrixWorld);
-      let mrmlPosition = worldPosition.applyMatrix4(worldToMRML);
-      mrmlPosition.multiplyScalar(1000); // convert to mm
-      console.log(`MRML position is ${mrmlPosition.x} ${mrmlPosition.y} ${mrmlPosition.z}`);
+    mrml = document.querySelector('#mrml');
 
-      let request = `slicer/fiducial?r=${mrmlPosition.x}&a=${mrmlPosition.y}&s=${mrmlPosition.z}`;
-      let tractographyRequest = new XMLHttpRequest();
-      tractographyRequest.open('GET', request);
-      console.log('requested: ', request);
-      tractographyRequest.onreadystatechange = function() {
-        if (tractographyRequest.readyState == 4) {
-          console.log('tractography finished');
-          let tracts = document.querySelector('#tracts');
-          tracts.setAttribute('src', 'slicer/mrml?id=vtkMRMLFiberBundleNode3&'+Date.now());
-        }
-      };
-      tractographyRequest.send();
+    tracts = document.querySelector('#tracts');
+    tracts.addEventListener('model-loaded', event => {
+      tractographyRequest = undefined;
     });
+
+    probe = document.querySelector('#probe');
+    probe.addEventListener('moved', updateProbe);
+
   });
+
   </script>
 </html>
