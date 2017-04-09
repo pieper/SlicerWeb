@@ -257,8 +257,7 @@ class glTFExporter:
 
     # position
     pointFloatArray = polyData.GetPoints().GetData()
-    pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray)
-    pointNumpyArray /= 1000.  # convert to meters
+    pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray) / 1000.  # convert to meters
     base64PointArray = base64.b64encode(pointNumpyArray)
     bounds = polyData.GetBounds()
 
