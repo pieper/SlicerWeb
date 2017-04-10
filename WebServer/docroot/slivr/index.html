@@ -29,7 +29,7 @@
         <a-entity position="0 1.0 0" scale="3 3 3" rotation="-90 0 0">
           <a-gltf-model id='mrml' src='slicer/mrml'></a-gltf-model>
           <a-gltf-model id='tracts'></a-gltf-model>
-          <a-gltf-model id='tractsForLoading' visible=true></a-gltf-model>
+          <a-gltf-model id='tractsForLoading' visible=false></a-gltf-model>
         </a-entity>
       </a-entity>
 
@@ -45,7 +45,7 @@
 
   <script>
 
-  let updateEvent = 'moved'; /* when tracts update; options are 'released' or 'moved' */
+  let updateEvent = 'released'; /* when tracts update; options are 'released' or 'moved' */
 
   let mrml, probe, tracts, tractsForLoading;
 
@@ -66,7 +66,6 @@
     let request = `slicer/fiducial?r=${mrmlPosition.x}&a=${mrmlPosition.y}&s=${mrmlPosition.z}`;
     tractographyRequest = new XMLHttpRequest();
     tractographyRequest.open('GET', request);
-    console.log('requested: ', request);
     tractographyRequest.onreadystatechange = function() {
       if (tractographyRequest.readyState == 4) {
         tractsForLoading.setAttribute('src', `slicer/mrml?id=${fiberNodeID}&${Date.now()}`);
