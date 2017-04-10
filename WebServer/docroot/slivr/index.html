@@ -10,18 +10,30 @@
   <body>
 
     <a-scene>
+
+      </a-assets>
+        <a-mixin id="probeMixin"
+                 geometry="primitive: sphere; radius: 0.01;"
+                 material="color: #aaaaaa;"></a-mixin>
+        <a-mixin id="probeMixin-collided"
+                 material="color: #F2E646;"></a-mixin>
+        <a-mixin id="probeMixin-grabbed"
+                 material="color: #F2E646;"></a-mixin>
+      </a-assets>
+
       <a-sky color="#7483E9"></a-sky>
       <a-entity ground></a-sky>
 
       <!-- The MRML scene -->
-      <a-entity position="0 0 -.1">
-        <a-entity position="0 1.6 0" scale="3 3 3" rotation="-90 0 0">
+      <a-box class="grabbable" color='#666666' position="0 0 -.1">
+        <a-entity position="0 1.0 0" scale="3 3 3" rotation="-90 0 0">
           <a-gltf-model id='mrml' src='slicer/mrml'></a-gltf-model>
           <a-gltf-model id='tracts'></a-gltf-model>
+          <a-gltf-model id='tractsForLoading' visible=true></a-gltf-model>
         </a-entity>
       </a-entity>
 
-      <a-sphere id='probe' class='grabbable' scale=".01 .01 .01" position="0 1.5 0"></a-sphere>
+      <a-entity id='probe' class='grabbable' mixin='probeMixin' position="0 .8 0"></a-entity>
 
       <!-- Controllers -->
       <a-entity hand-controls="left" aabb-collider="objects: .grabbable;" grab></a-entity>
@@ -33,11 +45,14 @@
 
   <script>
 
-  let mrml, probe, tracts;
+  let updateEvent = 'moved'; /* when tracts update; options are 'released' or 'moved' */
+
+  let mrml, probe, tracts, tractsForLoading;
 
   let tractographyRequest = undefined;
 
   function updateProbe(event) {
+    let fiberNodeID = 'vtkMRMLFiberBundleNode1';
     if (tractographyRequest != undefined) {
       return;
     }
@@ -54,7 +69,7 @@
     console.log('requested: ', request);
     tractographyRequest.onreadystatechange = function() {
       if (tractographyRequest.readyState == 4) {
-        tracts.setAttribute('src', 'slicer/mrml?id=vtkMRMLFiberBundleNode1&'+Date.now());
+        tractsForLoading.setAttribute('src', `slicer/mrml?id=${fiberNodeID}&${Date.now()}`);
       }
     };
     tractographyRequest.send();
@@ -65,12 +80,14 @@
     mrml = document.querySelector('#mrml');
 
     tracts = document.querySelector('#tracts');
-    tracts.addEventListener('model-loaded', event => {
+    tractsForLoading = document.querySelector('#tractsForLoading');
+    tractsForLoading.addEventListener('model-loaded', event => {
       tractographyRequest = undefined;
+      tracts.setAttribute('src', tractsForLoading.getAttribute('src'));
     });
 
     probe = document.querySelector('#probe');
-    probe.addEventListener('moved', updateProbe);
+    probe.addEventListener(updateEvent, updateProbe);
 
   });
 
