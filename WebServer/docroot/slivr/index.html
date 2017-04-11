@@ -2,14 +2,21 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <script src="https://aframe.io/releases/0.5.0/aframe.min.js"></script>
+    <!--<script src="https://aframe.io/releases/0.5.0/aframe.min.js"></script>-->
+    <script src="slivr/components/aframe-master.js"></script>
     <script src="slivr/components/aabb-collider.js"></script>
     <script src="slivr/components/grab.js"></script>
     <script src="slivr/components/ground.js"></script>
+    <script src="slivr/components/layout.js"></script>
+
+    <script src="slivr/components/look-at.js"></script>
+
   </head>
   <body>
 
     <a-scene>
+
+      <a-entity camera="userHeight: 1.6" look-controls wasd-controls></a-entity>
 
       </a-assets>
         <a-mixin id="probeMixin"
@@ -18,26 +25,40 @@
         <a-mixin id="probeMixin-collided"
                  material="color: #F2E646;"></a-mixin>
         <a-mixin id="probeMixin-grabbed"
-                 material="color: #F2E646;"></a-mixin>
+                 material="color: #44bb44;"></a-mixin>
       </a-assets>
 
       <a-sky color="#7483E9"></a-sky>
-      <a-entity ground></a-sky>
+      <a-entity ground></a-entity>
 
       <!-- The MRML scene -->
       <a-box class="grabbable" color='#666666' position="0 0 -.1">
         <a-entity position="0 1.0 0" scale="3 3 3" rotation="-90 0 0">
           <a-gltf-model id='mrml' src='slicer/mrml'></a-gltf-model>
           <a-gltf-model id='tracts'></a-gltf-model>
-          <a-gltf-model id='tractsForLoading' visible=false></a-gltf-model>
+          <a-gltf-model id='tractsForLoading' visible=true></a-gltf-model>
         </a-entity>
-      </a-entity>
+      </a-box>
 
       <a-entity id='probe' class='grabbable' mixin='probeMixin' position="0 .8 0"></a-entity>
+
+      <a-image
+        id='billboard'
+        src='slicer/slice?view=red'
+        position="0 .5 -.3"
+        class='grabbable'
+      ></a-image>
 
       <!-- Controllers -->
       <a-entity hand-controls="left" aabb-collider="objects: .grabbable;" grab></a-entity>
       <a-entity hand-controls="right" aabb-collider="objects: .grabbable;" grab></a-entity>
+
+      <a-entity layout="type: box; columns: 2" position="0 .5 -.6" >
+        <a-image id='redSlice' src='slicer/slice?view=red' class='grabbable'></a-image>
+        <a-image id='yellowSlice' src='slicer/slice?view=yellow' class='grabbable'></a-image>
+        <a-image id='greenSlice' src='slicer/slice?view=green' class='grabbable'></a-image>
+        <a-image id='threeDView0' src='slicer/threeD' class='grabbable'></a-image>
+      </a-entity>
 
     </a-scene>
 
@@ -88,7 +109,12 @@
     probe = document.querySelector('#probe');
     probe.addEventListener(updateEvent, updateProbe);
 
+
+    let billboard = document.querySelector('#billboard');
+    billboard.setAttribute('look-at', "[camera]");
+
   });
+
 
   </script>
 </html>
