@@ -5,6 +5,7 @@
     <!--<script src="https://aframe.io/releases/0.5.0/aframe.min.js"></script>-->
     <script src="slivr/components/aframe-master.js"></script>
     <script src="slivr/components/aabb-collider.js"></script>
+    <script src="slivr/components/controller-cursor.js"></script>
     <script src="slivr/components/grab.js"></script>
     <script src="slivr/components/ground.js"></script>
     <script src="slivr/components/layout.js"></script>
@@ -14,7 +15,7 @@
   </head>
   <body>
 
-    <a-scene>
+    <a-scene stats>
 
       <a-entity camera="userHeight: 1.6" look-controls wasd-controls></a-entity>
 
@@ -26,10 +27,14 @@
                  material="color: #F2E646;"></a-mixin>
         <a-mixin id="probeMixin-grabbed"
                  material="color: #44bb44;"></a-mixin>
+        <img id='sky' src="slivr/assets/33803655292_1f5dc62093_k.jpg"></img>
+        <img id='floor' src="slivr/assets/3683365935_21fe3a35e4_o.jpg"></img>
       </a-assets>
 
-      <a-sky color="#7483E9"></a-sky>
-      <a-entity ground></a-entity>
+
+      <a-sky src='#sky'></a-sky>
+      <!--<a-entity ground></a-entity>-->
+      <a-image src='#floor' color='#333333' scale='10 10 10' position='0 0 0' rotation='-90 0 0'></a-image>
 
       <!-- The MRML scene -->
       <a-box class="grabbable" color='#666666' position="0 0 -.1">
@@ -49,9 +54,14 @@
         class='grabbable'
       ></a-image>
 
-      <!-- Controllers -->
-      <a-entity hand-controls="left" aabb-collider="objects: .grabbable;" grab></a-entity>
-      <a-entity hand-controls="right" aabb-collider="objects: .grabbable;" grab></a-entity>
+      <!-- Controllers
+      -->
+      <a-entity hand-controls="left" aabb-collider="objects: .grabbable;" grab controller-cursor></a-entity>
+      <a-entity hand-controls="right" aabb-collider="objects: .grabbable;" grab controller-cursor></a-entity>
+      <!--
+      <a-entity vive-controls="hand: left" aabb-collider="objects: .grabbable;" grab></a-entity>
+      <a-entity vive-controls="hand: right" aabb-collider="objects: .grabbable;" grab></a-entity>
+      -->
 
       <a-entity layout="type: box; columns: 2" position="0 .5 -.6" >
         <a-image id='redSlice' src='slicer/slice?view=red' class='grabbable'></a-image>
@@ -59,6 +69,7 @@
         <a-image id='greenSlice' src='slicer/slice?view=green' class='grabbable'></a-image>
         <a-image id='threeDView0' src='slicer/threeD' class='grabbable'></a-image>
       </a-entity>
+
 
     </a-scene>
 
@@ -112,6 +123,10 @@
 
     let billboard = document.querySelector('#billboard');
     billboard.setAttribute('look-at', "[camera]");
+
+    billboard.addEventListener('mousedown', event => {
+      billboard.setAttribute('src', `slicer/slice?view=red&scrollTo=${Math.random()}`);
+    });
 
   });
 

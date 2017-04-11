@@ -23,6 +23,9 @@ AFRAME.registerComponent('grab', {
     el.addEventListener('thumbdown', this.onGripOpen);
     el.addEventListener('pointup', this.onGripClose);
     el.addEventListener('pointdown', this.onGripOpen);
+
+    el.addEventListener('triggerdown', this.onGripClose);
+    el.addEventListener('triggerup', this.onGripOpen);
   },
 
   pause: function () {
@@ -34,6 +37,9 @@ AFRAME.registerComponent('grab', {
     el.removeEventListener('thumbdown', this.onGripOpen);
     el.removeEventListener('pointup', this.onGripClose);
     el.removeEventListener('pointdown', this.onGripOpen);
+
+    el.removeEventListener('triggerdown', this.onGripClose);
+    el.removeEventListener('triggerup', this.onGripOpen);
   },
 
   onGripClose: function (evt) {
