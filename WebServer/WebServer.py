@@ -189,14 +189,25 @@ class glTFExporter:
     triangles.SetInputDataObject(model.GetPolyData())
     triangles.Update()
     polyData = triangles.GetOutput()
+    if not polyData.GetPoints():
+      print ('Skipping model with no points %s)' % model.GetName())
+      return
     display = model.GetDisplayNode()
     diffuseColor = [0.2, 0.6, 0.8]
+    visible = True
     if display:
       diffuseColor = list(display.GetColor())
+      visible = display.GetVisibility() == 1
     else:
+      # hack for dealing with fiber bundles - see fiberToModel
       color = model.GetAttribute('color')
       if color:
         diffuseColor = json.loads(color)
+      visible = model.GetAttribute('visibility') == '1'
+    if not visible:
+      print ('Skipping invisible model %s)' % model.GetName())
+      return
+    print ('Not skipping visible model %s)' % model.GetName())
     modelID = model.GetID()
     if modelID is None:
       modelID = model.GetName()
@@ -386,6 +397,7 @@ class glTFExporter:
     if tubeDisplay:
       color = json.dumps(list(tubeDisplay.GetColor()))
       model.SetAttribute("color", color)
+      model.SetAttribute("visibility", str(tubeDisplay.GetVisibility()))
     return(model)
 
     notes = """
