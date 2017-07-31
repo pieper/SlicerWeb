@@ -205,9 +205,7 @@ class glTFExporter:
         diffuseColor = json.loads(color)
       visible = model.GetAttribute('visibility') == '1'
     if not visible:
-      print ('Skipping invisible model %s)' % model.GetName())
       return
-    print ('Not skipping visible model %s)' % model.GetName())
     modelID = model.GetID()
     if modelID is None:
       modelID = model.GetName()
@@ -376,14 +374,47 @@ class glTFExporter:
         "type": "SCALAR"
     }
 
+  def copyFirstNLines(self, sourcePolyData, lineCount):
+    """make a polydata with only the first N polylines"""
+
+    polyData = vtk.vtkPolyData()
+    points = vtk.vtkPoints()
+    polyData.SetPoints(points)
+
+    lines = vtk.vtkCellArray()
+    polyData.SetLines(lines)
+
+    sourcePoints = sourcePolyData.GetPoints()
+    sourceLines = sourcePolyData.GetLines()
+    sourceIdList = vtk.vtkIdList()
+    sourceLines.InitTraversal()
+    while sourceLines.GetNextCell(sourceIdList):
+        pointCount = sourceIdList.GetNumberOfIds()
+        idList = vtk.vtkIdList()
+        for idIndex in range(pointCount):
+            sourceId = sourceIdList.GetId(idIndex)
+            point = sourcePoints.GetPoint(sourceId)
+            id = points.InsertNextPoint(point)
+            idList.InsertNextId(id)
+        lines.InsertNextCell(idList)
+        if lines.GetNumberOfCells() > lineCount:
+            break
+
+    return polyData
+
+
   def fiberToModel(self,fiber):
     """Convert a vtkMRMLFiberBundleNode into a dummy vtkMRMLModelNode
     so it can use the same converter.
     Note: need to use attributes to send color since we cannot
     add a display node to the dummy node since it is not in a scene.
     """
+    if self.targetTubeCount and self.targetTubeCount < fiber.GetPolyData().GetNumberOfCells():
+        fiberPolyData = self.copyFirstNLines(fiber.GetPolyData(), self.targetTubeCount)
+    else:
+        fiberPolyData = fiber.GetPolyData()
     tuber = vtk.vtkTubeFilter()
-    tuber.SetInputDataObject(fiber.GetPolyData())
+    tuber.SetInputDataObject(fiberPolyData)
     tuber.Update()
     polyData = tuber.GetOutput()
     normalsArray = polyData.GetPointData().GetArray('TubeNormals')
@@ -1706,7 +1737,7 @@ class SlicerHTTPServer(HTTPServer):
         sent = self.connectionSocket.send(self.response)
         self.response = self.response[sent:]
         self.sentSoFar += sent
-        self.logMessage('sent: %d of %d' % (sent, self.toSend))
+        self.logMessage('sent: %d (%d of %d, %f%%)' % (sent, self.sentSoFar, self.toSend, 100.*self.sentSoFar / self.toSend))
       except socket.error, e:
         self.logMessage('Socket error while sending: %s' % e)
         sendError = True
