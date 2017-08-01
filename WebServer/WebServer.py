@@ -195,9 +195,11 @@ class glTFExporter:
     display = model.GetDisplayNode()
     diffuseColor = [0.2, 0.6, 0.8]
     visible = True
+    nonOpaque = False
     if display:
       diffuseColor = list(display.GetColor())
       visible = display.GetVisibility() == 1
+      nonOpaque = display.GetOpacity() < 1.0
     else:
       # hack for dealing with fiber bundles - see fiberToModel
       color = model.GetAttribute('color')
@@ -226,6 +228,7 @@ class glTFExporter:
             "name": "Mesh"
         }
     self.glTF["scenes"]["defaultScene"]["nodes"].append(modelID)
+    glLines = 1
     glTriangles = 4
     self.glTF["meshes"]["Mesh_"+modelID] = {
         "name": "Mesh_"+modelID,
@@ -237,7 +240,7 @@ class glTFExporter:
                 },
                 "indices": "Accessor_Indices_"+modelID,
                 "material": "Material_"+modelID,
-                "mode": glTriangles
+                "mode": glLines if nonOpaque else glTriangles
             }
         ]
     }
