@@ -739,6 +739,9 @@ class SlicerRequestHandler(object):
         responseBody = self.eulers(cmd)
       elif cmd.find('/volumeSelection') == 0:
         responseBody = self.volumeSelection(cmd)
+      elif cmd.find('/volumes') == 0:
+        responseBody = self.volumes(cmd, requestBody)
+        contentType = 'application/json',
       elif cmd.find('/volume') == 0:
         responseBody = self.volume(cmd, requestBody)
         contentType = 'application/octet-stream',
@@ -947,6 +950,14 @@ class SlicerRequestHandler(object):
     applicationLogic.PropagateVolumeSelection(0)
     return ( "got it" )
 
+  def volumes(self, cmd, requestBody):
+    volumes = []
+    mrmlVolumes = slicer.util.getNodes('vtkMRMLScalarVolumeNode*')
+    for id_ in mrmlVolumes.keys():
+      volumeNode = mrmlVolumes[id_]
+      volumes.append({"name": volumeNode.GetName(), "id": volumeNode.GetID()})
+    return ( json.dumps( volumes ) )
+
   def volume(self, cmd, requestBody):
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
@@ -1046,7 +1057,7 @@ class SlicerRequestHandler(object):
     volumeNode = slicer.util.getNode(volumeID)
     volumeArray = slicer.util.array(volumeID)
 
-    if volumeNode == None or volumeArray == None:
+    if volumeNode is None or volumeArray is None:
       self.logMessage('Could not find requested volume')
       return None
     supportedNodes = ["vtkMRMLScalarVolumeNode","vtkMRMLLabelMapVolumeNode"]
@@ -1058,7 +1069,8 @@ class SlicerRequestHandler(object):
 
     if imageData.GetScalarTypeAsString() != "short":
       self.logMessage('Can only get volumes of type short')
-      return None
+      self.logMessage('Converting to short, but may cause data loss.')
+      volumeArray = numpy.array(volumeArray, dtype='int16')
 
     sizes = imageData.GetDimensions()
     sizes = " ".join(map(str,sizes))
