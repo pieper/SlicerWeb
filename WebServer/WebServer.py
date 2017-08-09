@@ -733,8 +733,8 @@ class SlicerRequestHandler(object):
       elif cmd.find('/mrml') == 0:
         responseBody = self.mrml(cmd)
         contentType = 'application/json',
-      elif cmd.find('/transform') == 0:
-        responseBody = self.transform(cmd)
+      elif cmd.find('/tracking') == 0:
+        responseBody = self.tracking(cmd)
       elif cmd.find('/eulers') == 0:
         responseBody = self.eulers(cmd)
       elif cmd.find('/volumeSelection') == 0:
@@ -744,6 +744,9 @@ class SlicerRequestHandler(object):
         contentType = 'application/json',
       elif cmd.find('/volume') == 0:
         responseBody = self.volume(cmd, requestBody)
+        contentType = 'application/octet-stream',
+      elif cmd.find('/transform') == 0:
+        responseBody = self.transform(cmd, requestBody)
         contentType = 'application/octet-stream',
       elif cmd.find('/fiducial') == 0:
         responseBody = self.fiducial(cmd, requestBody)
@@ -895,7 +898,7 @@ class SlicerRequestHandler(object):
 
     return ( "got it" )
 
-  def transform(self,cmd):
+  def tracking(self,cmd):
     p = urlparse.urlparse(cmd)
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
@@ -970,6 +973,19 @@ class SlicerRequestHandler(object):
       return self.postNRRD(volumeID, requestBody)
     else:
       return self.getNRRD(volumeID)
+
+  def transform(self, cmd, requestBody):
+    p = urlparse.urlparse(cmd)
+    q = urlparse.parse_qs(p.query)
+    try:
+      transformID = q['id'][0].strip()
+    except KeyError:
+      transformID = 'vtkMRMLTransformNode*'
+
+    if requestBody:
+      return self.postTransformNRRD(transformID, requestBody)
+    else:
+      return self.getTransformNRRD(transformID)
 
   def postNRRD(self, volumeID, requestBody):
     """Convert a binary blob of nrrd data into a node in the scene.
@@ -1118,6 +1134,63 @@ space origin: %%origin%%
     nrrdData = StringIO.StringIO()
     nrrdData.write(nrrdHeader)
     nrrdData.write(volumeArray.data)
+    return nrrdData.getvalue()
+
+  def getTransformNRRD(self, transformID):
+    """Return a nrrd binary blob with contents of the transform node"""
+    transformNode = slicer.util.getNode(transformID)
+    transformArray = slicer.util.array(transformID)
+
+    if transformNode is None or transformArray is None:
+      self.logMessage('Could not find requested transform')
+      return None
+    supportedNodes = ["vtkMRMLGridTransformNode",]
+    if not transformNode.GetClassName() in supportedNodes:
+      self.logMessage('Can only get grid transforms')
+      return None
+
+    imageData = transformNode.GetTransformFromParent().GetDisplacementGrid()
+
+    # for now, only handle non-oriented grid transform as
+    # generated from LandmarkRegistration
+    # TODO: generalize for any GridTransform node
+
+    sizes = (3,) + imageData.GetDimensions()
+    sizes = " ".join(map(str,sizes))
+
+    spacing = list(imageData.GetSpacing())
+    spacing[0] *= -1 # RAS to LPS
+    spacing[1] *= -1 # RAS to LPS
+    directions = '(%g,0,0) (0,%g,0) (0,0,%g)' % tuple(spacing)
+
+    origin = list(imageData.GetOrigin())
+    origin[0] *= -1 # RAS to LPS
+    origin[1] *= -1 # RAS to LPS
+    origin = '(%g,%g,%g)' % tuple(origin)
+
+    # should look like:
+    #space directions: (0,1,0) (0,0,-1) (-1.2999954223632812,0,0)
+    #space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
+
+    nrrdHeader = """NRRD0004
+# Complete NRRD file format specification at:
+# http://teem.sourceforge.net/nrrd/format.html
+type: float
+dimension: 4
+space: left-posterior-superior
+sizes: %%sizes%%
+space directions: %%directions%%
+kinds: vector domain domain domain
+endian: little
+encoding: raw
+space origin: %%origin%%
+
+""".replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
+
+
+    nrrdData = StringIO.StringIO()
+    nrrdData.write(nrrdHeader)
+    nrrdData.write(transformArray.data)
     return nrrdData.getvalue()
 
   def fiducial(self, cmd, requestBody):
