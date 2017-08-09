@@ -1149,6 +1149,11 @@ space origin: %%origin%%
       self.logMessage('Can only get grid transforms')
       return None
 
+    # map the vectors to be in the LPS measurement frame
+    # (need to make a copy so as not to change the slicer transform)
+    lpsArray = numpy.array(transformArray)
+    lpsArray *= numpy.array([-1,-1,1])
+
     imageData = transformNode.GetTransformFromParent().GetDisplacementGrid()
 
     # for now, only handle non-oriented grid transform as
@@ -1190,7 +1195,7 @@ space origin: %%origin%%
 
     nrrdData = StringIO.StringIO()
     nrrdData.write(nrrdHeader)
-    nrrdData.write(transformArray.data)
+    nrrdData.write(lpsArray.data)
     return nrrdData.getvalue()
 
   def fiducial(self, cmd, requestBody):
