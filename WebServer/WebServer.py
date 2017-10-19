@@ -2,22 +2,24 @@ import os
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
+import base64
+import json
+import hashlib
 import logging
 import random
-import sys
 import select
+import string
+import socket
+import sys
+import time
 import urlparse
 import urllib
-import json
+import uuid
 try:
     import cStringIO as StringIO
 except ImportError:
     import StringIO
 
-import string
-import time
-import socket
-import uuid
 
 from BaseHTTPServer import HTTPServer
 import mimetypes
@@ -37,9 +39,6 @@ hasImage = False
 #
 # glTFExporter
 #
-
-import base64
-
 class glTFExporter:
   """
   Export a subset of mrml data to glTF format (https://www.khronos.org/gltf).
@@ -402,9 +401,7 @@ class glTFExporter:
         lines.InsertNextCell(idList)
         if lines.GetNumberOfCells() > lineCount:
             break
-
     return polyData
-
 
   def fiberToModel(self,fiber):
     """Convert a vtkMRMLFiberBundleNode into a dummy vtkMRMLModelNode
@@ -445,11 +442,112 @@ class glTFExporter:
       lookupTable.DeepCopy(colorNode.GetLookupTable())
       lookupTable.SetTableRange(0,1)
    """
+#end of glTFExporter
+
+#
+# SceneObserver
+# - migrated from CommonGL/ShaderComputation
+#
+from slicer.util import VTKObservationMixin
+class SceneObserver(VTKObservationMixin):
+  """Observes everything in the scene
+  This should be used thoughtfully because it is rather heavyweight
+  to create and will be getting called for every interaction with the scene.
+  TODO: add a simple way for users of this class to subscribe
+  to patterns of events, such as adds/removals of certain classes
+  of nodes, or events from any node of a given node class.
+  TODO: if this experiment proves useful it could migrate to slicer.util
+
+  for debugging turn this on
+    0: no debugging
+    1: print each trigger
+    2: print each scene event
+  """
+
+  def __init__(self, scene=None):
+    """Add observers to the mrmlScene and also to all the nodes of the scene"""
+    VTKObservationMixin.__init__(self)
+
+    if scene is None:
+      self._scene = slicer.mrmlScene
+    else:
+      self._scene = scene
+    self.addObserver(self._scene, self._scene.NodeAddedEvent, self.onNodeAdded)
+    self.addObserver(self._scene, self._scene.NodeRemovedEvent, self.onNodeRemoved)
+
+    self._scene.InitTraversal()
+    node = self._scene.GetNextNode()
+    while node:
+      self._observeNode(node)
+      node = self._scene.GetNextNode()
+
+    # a dictionary of (nodeKey,eventKey) -> callback
+    # where nodeKey is classname "vtkMRML{nodeKey}Node"
+    # and eventKey is tested for equality to "{eventKey}Event"
+    self._triggers = {}
+
+    self.verbose = 0
+
+  def __del__(self):
+    if self.verbose > 1:
+      print("deleting, so removing observers")
+    self.removeObservers()
+
+  def _observeNode(self,node):
+    if node.IsA('vtkMRMLNode'):
+      # use AnyEvent since it will catch events like TransformModified
+      self.addObserver(node, vtk.vtkCommand.AnyEvent, self._onNodeModified)
+    else:
+      raise('should not happen: non node is in scene')
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onNodeAdded(self, caller, event, calldata):
+    node = calldata
+    if not self.hasObserver(node, vtk.vtkCommand.AnyEvent, self._onNodeModified):
+      self._observeNode(node)
+    self._trigger(node.GetClassName(), "NodeAddedEvent")
+
+  @vtk.calldata_type(vtk.VTK_OBJECT)
+  def onNodeRemoved(self, caller, event, calldata):
+    node = calldata
+    self.removeObserver(node, vtk.vtkCommand.AnyEvent, self._onNodeModified)
+    self._trigger(node.GetClassName(), "NodeRemovedEvent")
+
+  def _trigger(self, className, eventName):
+    key = (className,eventName)
+    if key in self._triggers:
+      for callback in self._triggers[key]:
+        if self.verbose > 0:
+          print("callback triggered by %s from %s" % (eventName, className))
+        callback()
+
+  def _onNodeModified(self,node,eventName):
+    if self.verbose > 1:
+      print("%s from %s" % (eventName, node.GetID()))
+    self._trigger(node.GetClassName(), eventName)
+
+  def _key(self, nodeKey, eventKey):
+    """Convert shorthand notation to full class and event name"""
+    return ("vtkMRML%sNode"%nodeKey,"%sEvent"%eventKey)
+
+  def addTrigger(self, nodeKey, eventKey, callback):
+    key = self._key(nodeKey, eventKey)
+    if not key in self._triggers:
+      self._triggers[key] = []
+    self._triggers[key].append(callback)
+
+  def removeTrigger(self, nodeKey, eventKey, callback):
+    key = self._key(nodeKey, eventKey)
+    if key in self._triggers:
+      if callback in self._triggers[key]:
+        self._triggers[key].remove(callback)
+# end of SceneObserver
+
 
 #
 # WebServer
+# - module hook
 #
-
 class WebServer:
   def __init__(self, parent):
     parent.title = "Web Server"
@@ -462,17 +560,16 @@ class WebServer:
 This work was partially funded by NIH grant 3P41RR013218.
 """ # replace with organization, grant and thanks.
     self.parent = parent
-
+# end of WebServer
 
 #
 # WebServer widget
+# - slicer application gui panel
 #
-
 class WebServerWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
-
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -623,12 +720,11 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
       self.log.insertPlainText('\n')
       self.log.ensureCursorVisible()
       self.log.repaint()
-      #slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+# end of WebServerWidget
 
 #
 # StaticRequestHandler
 #
-
 class StaticRequestHandler(object):
 
   def __init__(self, docroot, logMessage):
@@ -668,11 +764,12 @@ class StaticRequestHandler(object):
       except IOError:
         responseBody = None
     return contentType, responseBody
+# end of StaticRequestHandler
+
 
 #
 # SlicerRequestHandler
 #
-
 class SlicerRequestHandler(object):
 
   def __init__(self, logMessage):
@@ -724,6 +821,8 @@ class SlicerRequestHandler(object):
         responseBody = self.preset(cmd)
       elif cmd.find('/timeimage') == 0:
         responseBody = self.timeimage(cmd)
+      elif cmd.find('/block') == 0:
+        responseBody = self.block(cmd)
       elif cmd.find('/slice') == 0:
         responseBody = self.slice(cmd)
         contentType = 'image/png',
@@ -1177,10 +1276,12 @@ space origin: %%origin%%
     #space directions: (0,1,0) (0,0,-1) (-1.2999954223632812,0,0)
     #space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
 
+    scalarType = imageData.GetScalarTypeAsString()
+
     nrrdHeader = """NRRD0004
 # Complete NRRD file format specification at:
 # http://teem.sourceforge.net/nrrd/format.html
-type: float
+type: %%scalarType%%
 dimension: 4
 space: left-posterior-superior
 sizes: %%sizes%%
@@ -1190,7 +1291,7 @@ endian: little
 encoding: raw
 space origin: %%origin%%
 
-""".replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
+""".replace("%%scalarType%%", scalarType).replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
 
 
     nrrdData = StringIO.StringIO()
@@ -1541,10 +1642,16 @@ space origin: %%origin%%
     pngData = self.vtkImageDataToPNG(vtkTimeImage)
     return pngData
 
+  def block(self,cmd=''):
+    """For debugging - bring up a dialog and block for response
+    """
+    slicer.util.warningDisplay('waiting...')
+    return "Okay to continue..."
+# end of SlicerRequestHandler
+
 #
 # SlicerHTTPServer
 #
-
 class SlicerHTTPServer(HTTPServer):
   """
   This web server is configured to integrate with the Qt main loop
@@ -1563,7 +1670,6 @@ class SlicerHTTPServer(HTTPServer):
     self.notifiers = {}
     self.connections = {}
     self.requestCommunicators = {}
-
 
   class RequestCommunicator(object):
     """Encapsulate elements for handling event driven read of request"""
@@ -1636,28 +1742,55 @@ class SlicerHTTPServer(HTTPServer):
           self.logMessage("Warning, we only handle %s" % methods)
           return
 
-        contentType = 'text/plain'
-        responseBody = 'No body'
-        if not(os.path.dirname(uri).endswith('slicer')):
-          contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
-        else:
-          url = urlparse.urlparse( uri )
-          action = os.path.basename( url.path )
-          request = '/' + action + '?' + url.query
-          self.logMessage('Parsing url: %s' % request)
-          contentType, responseBody = self.slicerRequestHandler.handleSlicerCommand(request, requestBody)
+        isWebSocket = False
+        webSocketKey = ''
+        for requestLine in requestLines:
+          if requestLine == "Upgrade: websocket":
+            isWebSocket = True
+          if requestLine.startswith("Sec-WebSocket-Key:"):
+            webSocketKey = requestLine[2+requestLine.index(':'):]
+            print('requestLine', requestLine)
+            print('webSocketKey', webSocketKey)
+        if isWebSocket:
+          # Work on this suspended - other solutions are probably better (e.g. using job database)
+          # TODO:
+          # - acceptKey is not correct.  See websockify and others for better examples
+          # - socket needs to be kept open and async communication handled similar to http
+          # - data message framing needs to be implemented
+          # - some protocol needs to be defined for passing realtime mrml messages
+          webSocketGUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+          sha1 = hashlib.sha1((webSocketKey+webSocketGUID).encode('ascii'))
+          acceptKey = base64.b64encode(sha1.digest()).decode('ascii')
+          self.response = "HTTP/1.1 101 Switching Protocols\r\n"
+          self.response += "Upgrade: websocket\r\n"
+          self.response += "Connection: Upgrade\r\n"
+          self.response += "Sec-WebSocket-Accept: %s=\r\n" % acceptKey
+          self.response += "\r\n"
+          print('response:')
+          print(self.response)
+        else: 
+          contentType = 'text/plain'
+          responseBody = 'No body'
+          if not(os.path.dirname(uri).endswith('slicer')):
+            contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
+          else:
+            url = urlparse.urlparse( uri )
+            action = os.path.basename( url.path )
+            request = '/' + action + '?' + url.query
+            self.logMessage('Parsing url: %s' % request)
+            contentType, responseBody = self.slicerRequestHandler.handleSlicerCommand(request, requestBody)
 
-        if responseBody:
-          self.response = "HTTP/1.1 200 OK\r\n"
-          self.response += "Access-Control-Allow-Origin: *\r\n"
-          self.response += "Content-Type: %s\r\n" % contentType
-          self.response += "Content-Length: %d\r\n" % len(responseBody)
-          self.response += "Cache-Control: no-cache\r\n"
-          self.response += "\r\n"
-          self.response += responseBody
-        else:
-          self.response = "HTTP/1.1 404 Not Found\r\n"
-          self.response += "\r\n"
+          if responseBody:
+            self.response = "HTTP/1.1 200 OK\r\n"
+            self.response += "Access-Control-Allow-Origin: *\r\n"
+            self.response += "Content-Type: %s\r\n" % contentType
+            self.response += "Content-Length: %d\r\n" % len(responseBody)
+            self.response += "Cache-Control: no-cache\r\n"
+            self.response += "\r\n"
+            self.response += responseBody
+          else:
+            self.response = "HTTP/1.1 404 Not Found\r\n"
+            self.response += "\r\n"
 
         self.toSend = len(self.response)
         self.sentSoFar = 0
@@ -1751,13 +1884,12 @@ class SlicerHTTPServer(HTTPServer):
         s.close()
         portFree = True
     return port
-
+# end of SlicerHTTPServer
 
 
 #
 # WebServer logic
 #
-
 class WebServerLogic:
   """Include a concrete subclass of SimpleHTTPServer
   that speaks slicer.
@@ -1789,3 +1921,4 @@ class WebServerLogic:
   def stop(self):
     if self.server:
       self.server.stop()
+# end of WebServerLogic
