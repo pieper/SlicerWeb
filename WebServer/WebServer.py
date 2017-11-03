@@ -53,14 +53,30 @@ class glTFExporter:
     self.mrmlScene = mrmlScene
     self.sceneDefaults()
 
-  def export(self,nodeFilter=lambda node: True):
+  def export(self,nodeFilter=lambda node: True, options={}):
     """
     Returns a json document string in the format supported by glTF
     and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
     some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
 
     nodeFilter is a callable that returns true if the node should be included in the export
+    options includes:
+      targetFiberCount : can be None for no limit or an integer
+      fiberMode : can be "lines" or "tubes"
+      modelMode : can be "lines" or "triangles"
     """
+
+    self.targetFiberCount = options['targetFiberCount'] if "targetFiberCount" in options else None
+    self.fiberMode = options['fiberMode'] if "fiberMode" in options else "tubes"
+    self.modelMode = "lines" if self.fiberMode == "lines" else "triangles"
+
+    if self.fiberMode not in ["lines", "tubes"]:
+      print('Bad fiber mode %s' % self.fiberMode)
+      return None
+
+    if self.modelMode not in ["lines", "triangles"]:
+      print('Bad model mode %s' % self.modelMode)
+      return None
 
     # things specific to each model node
     models = slicer.util.getNodes('vtkMRMLModelNode*')
@@ -185,10 +201,13 @@ class glTFExporter:
 
   def addModel(self, model):
     """Add a mrml model node as a glTF node"""
-    triangles = vtk.vtkTriangleFilter()
-    triangles.SetInputDataObject(model.GetPolyData())
-    triangles.Update()
-    polyData = triangles.GetOutput()
+    if self.modelMode == "triangles":
+      triangles = vtk.vtkTriangleFilter()
+      triangles.SetInputDataObject(model.GetPolyData())
+      triangles.Update()
+      polyData = triangles.GetOutput()
+    elif self.modelMode == "lines":
+      polyData = model.GetPolyData()
     if not polyData.GetPoints():
       print ('Skipping model with no points %s)' % model.GetName())
       return
@@ -230,20 +249,36 @@ class glTFExporter:
     self.glTF["scenes"]["defaultScene"]["nodes"].append(modelID)
     glLines = 1
     glTriangles = 4
-    self.glTF["meshes"]["Mesh_"+modelID] = {
-        "name": "Mesh_"+modelID,
-        "primitives": [
-            {
-                "attributes": {
-                    "NORMAL": "Accessor_Normal_"+modelID,
-                    "POSITION": "Accessor_Position_"+modelID
-                },
-                "indices": "Accessor_Indices_"+modelID,
-                "material": "Material_"+modelID,
-                "mode": glLines if nonOpaque else glTriangles
-            }
-        ]
-    }
+    if self.modelMode == "triangles":
+      self.glTF["meshes"]["Mesh_"+modelID] = {
+          "name": "Mesh_"+modelID,
+          "primitives": [
+              {
+                  "attributes": {
+                      "NORMAL": "Accessor_Normal_"+modelID,
+                      "POSITION": "Accessor_Position_"+modelID
+                  },
+                  "indices": "Accessor_Indices_"+modelID,
+                  "material": "Material_"+modelID,
+                  "mode": glLines if nonOpaque else glTriangles
+              }
+          ]
+      }
+    elif self.modelMode == "lines":
+      self.glTF["meshes"]["Mesh_"+modelID] = {
+          "name": "Mesh_"+modelID,
+          "primitives": [
+              {
+                  "attributes": {
+                      "POSITION": "Accessor_Position_"+modelID
+                  },
+                  "indices": "Accessor_Indices_"+modelID,
+                  "material": "Material_"+modelID,
+                  "mode": glLines
+              }
+          ]
+      }
+
     self.glTF["materials"]["Material_"+modelID] = {
         "name": "Material_"+modelID,
         "extensions": {
@@ -295,87 +330,140 @@ class glTFExporter:
         "max": [bounds[1],bounds[3],bounds[5]]
     }
 
-    # point
-    normalFloatArray = polyData.GetPointData().GetArray('Normals')
-    normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
-    base64NormalArray = base64.b64encode(normalNumpyArray)
+    if self.modelMode == "triangles":
 
-    self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
-        "byteLength": len(base64NormalArray),
-        "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64NormalArray,
-    }
-    self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
-        "buffer": "Buffer_Normal_"+modelID,
-        "byteLength": len(base64NormalArray),
-        "byteOffset": 0,
-        "target": 34962
-    }
-    self.glTF["accessors"]["Accessor_Normal_"+modelID] = {
-        "bufferView": "BufferView_Normal_"+modelID,
-        "byteOffset": 0,
-        "byteStride": 12,
-        "componentType": 5126,
-        "min": [ -1., -1., -1. ],
-        "max": [ 1., 1., 1. ],
-        "count": normalFloatArray.GetNumberOfTuples(),
-        "type": "VEC3"
-    }
+      # normal
+      normalFloatArray = polyData.GetPointData().GetArray('Normals')
+      normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
+      base64NormalArray = base64.b64encode(normalNumpyArray)
 
-    # indices for triangle strips
-    # (not finished because it turns out aframe's glTF loader
-    # only supports lines and triangles)
-    stripFolly = """
-    stripCount = polyData.GetNumberOfStrips()
-    stripIndices = polyData.GetStrips().GetData()
-    stripVTKIndices = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
-    stripGLIndices = numpy.zeros(stripCount+len(stripVTKIndices), dtype='uint32')
+      self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
+          "byteLength": len(base64NormalArray),
+          "type": "arraybuffer",
+          "uri": "data:application/octet-stream;base64,"+base64NormalArray,
+      }
+      self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
+          "buffer": "Buffer_Normal_"+modelID,
+          "byteLength": len(base64NormalArray),
+          "byteOffset": 0,
+          "target": 34962
+      }
+      self.glTF["accessors"]["Accessor_Normal_"+modelID] = {
+          "bufferView": "BufferView_Normal_"+modelID,
+          "byteOffset": 0,
+          "byteStride": 12,
+          "componentType": 5126,
+          "min": [ -1., -1., -1. ],
+          "max": [ 1., 1., 1. ],
+          "count": normalFloatArray.GetNumberOfTuples(),
+          "type": "VEC3"
+      }
 
-    stripVTKIndex = 0
-    stripGLIndex = 0
-    while stripVTKIndex < len(stripVTKIndices):
-      stripSize = stripVTKIndices[stripVTKIndex]
-      stripGLIndices[stripGLIndex:stripGLIndex+stripSize] = stripVTKIndices[stripVTKIndex+1:stripVTKIndex+1+stripSize]
-      stripGLIndices[stripGLIndex+stripSize+1] = stripGLIndices[stripGLIndex+stripSize]
-      firstIndexNextStrip = stripVTKIndex + stripSize + 2
-      if firstIndexNextStrip < len(stripVTKIndices):
-        stripGLIndices[stripGLIndex+stripSize+2] = stripVTKIndices[firstIndexNextStrip]
-      stripVTKIndex += 1+stripSize
-      stripGLIndex += stripSize
+      # indices for triangle strips
+      # (not finished because it turns out aframe's glTF loader
+      # only supports lines and triangles)
+      stripFolly = """
+      stripCount = polyData.GetNumberOfStrips()
+      stripIndices = polyData.GetStrips().GetData()
+      stripVTKIndices = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
+      stripGLIndices = numpy.zeros(stripCount+len(stripVTKIndices), dtype='uint32')
 
-    print(stripVTKIndices)
-    print(stripGLIndices)
+      stripVTKIndex = 0
+      stripGLIndex = 0
+      while stripVTKIndex < len(stripVTKIndices):
+        stripSize = stripVTKIndices[stripVTKIndex]
+        stripGLIndices[stripGLIndex:stripGLIndex+stripSize] = stripVTKIndices[stripVTKIndex+1:stripVTKIndex+1+stripSize]
+        stripGLIndices[stripGLIndex+stripSize+1] = stripGLIndices[stripGLIndex+stripSize]
+        firstIndexNextStrip = stripVTKIndex + stripSize + 2
+        if firstIndexNextStrip < len(stripVTKIndices):
+          stripGLIndices[stripGLIndex+stripSize+2] = stripVTKIndices[firstIndexNextStrip]
+        stripVTKIndex += 1+stripSize
+        stripGLIndex += stripSize
 
-    base64StripIndices = base64.b64encode(stripGLIndices)
-    """
+      print(stripVTKIndices)
+      print(stripGLIndices)
 
-    # indices
-    triangleCount = polyData.GetNumberOfPolys()
-    triangleIndices = polyData.GetPolys().GetData()
-    triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
-    # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
-    triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
-    base64Indices = base64.b64encode(numpy.asarray(triangleIndexNumpyArray, order='C'))
+      base64StripIndices = base64.b64encode(stripGLIndices)
+      """
 
-    self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
-        "byteLength": len(base64PointArray),
-        "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64Indices
-    }
-    self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
-        "buffer": "Buffer_Indices_"+modelID,
-        "byteOffset": 0,
-        "byteLength": 4 * len(triangleIndexNumpyArray),
-        "target": 34963
-    }
-    self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
-        "bufferView": "BufferView_Indices_"+modelID,
-        "byteOffset": 0,
-        "byteStride": 0,
-        "componentType": 5125,
-        "count": len(triangleIndexNumpyArray),
-        "type": "SCALAR"
-    }
+      # indices
+      triangleCount = polyData.GetNumberOfPolys()
+      triangleIndices = polyData.GetPolys().GetData()
+      triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
+      # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
+      triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
+      base64Indices = base64.b64encode(numpy.asarray(triangleIndexNumpyArray, order='C'))
+
+      self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
+          "byteLength": len(base64PointArray),
+          "type": "arraybuffer",
+          "uri": "data:application/octet-stream;base64,"+base64Indices
+      }
+      self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
+          "buffer": "Buffer_Indices_"+modelID,
+          "byteOffset": 0,
+          "byteLength": 4 * len(triangleIndexNumpyArray),
+          "target": 34963
+      }
+      self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
+          "bufferView": "BufferView_Indices_"+modelID,
+          "byteOffset": 0,
+          "byteStride": 0,
+          "componentType": 5125,
+          "count": len(triangleIndexNumpyArray),
+          "type": "SCALAR"
+      }
+
+    elif self.modelMode == "lines":
+
+      # indices
+      polylineCount = polyData.GetNumberOfLines()
+      lineIndices = polyData.GetLines().GetData()
+      polylineArray = vtk.util.numpy_support.vtk_to_numpy(lineIndices).astype('uint32')
+      # vtk stores the vertext count at the start of each polyline, but we need lines, meaning repeated indices unfortunately
+      # no way to know how many until we loop through
+      polylineIndex = 0
+      lineCount = 0
+      for polyline in xrange(polylineCount):
+        vertexCount = polylineArray[polylineIndex]
+        lineCount += 2 * (vertexCount - 1) # each pair in polyline is one line
+        polylineIndex += vertexCount + 1 # includes the vertexCount slot
+
+      linesArray = numpy.zeros(2 * lineCount, dtype='uint32') # two indices for each line
+      linesIndex = 0
+      polylineIndex = 0
+      for polyline in xrange(polylineCount):
+        vertexCount = polylineArray[polylineIndex]
+        polylineIndex += 1
+        linesCount = 2 * (vertexCount - 1) # all but one are doubled
+        for vertex in xrange(vertexCount-1):
+          linesArray[linesIndex] = polylineArray[polylineIndex + vertex]
+          linesIndex += 1
+          linesArray[linesIndex] = polylineArray[polylineIndex + vertex+1]
+          linesIndex += 1
+        polylineIndex += vertexCount
+
+      base64Indices = base64.b64encode(numpy.asarray(linesArray, order='C'))
+
+      self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
+          "byteLength": len(base64PointArray),
+          "type": "arraybuffer",
+          "uri": "data:application/octet-stream;base64,"+base64Indices
+      }
+      self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
+          "buffer": "Buffer_Indices_"+modelID,
+          "byteOffset": 0,
+          "byteLength": 4 * len(linesArray),
+          "target": 34963
+      }
+      self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
+          "bufferView": "BufferView_Indices_"+modelID,
+          "byteOffset": 0,
+          "byteStride": 0,
+          "componentType": 5125,
+          "count": len(linesArray),
+          "type": "SCALAR"
+      }
 
   def copyFirstNLines(self, sourcePolyData, lineCount):
     """make a polydata with only the first N polylines"""
@@ -411,27 +499,34 @@ class glTFExporter:
     so it can use the same converter.
     Note: need to use attributes to send color since we cannot
     add a display node to the dummy node since it is not in a scene.
+    If fiberMode is tube, create tubes from fiber tracts, else use lines from tracts
     """
-    if self.targetTubeCount and self.targetTubeCount < fiber.GetPolyData().GetNumberOfCells():
-        fiberPolyData = self.copyFirstNLines(fiber.GetPolyData(), self.targetTubeCount)
+    if self.targetFiberCount and int(self.targetFiberCount) < fiber.GetPolyData().GetNumberOfCells():
+      fiberPolyData = self.copyFirstNLines(fiber.GetPolyData(), int(self.targetFiberCount))
     else:
-        fiberPolyData = fiber.GetPolyData()
-    tuber = vtk.vtkTubeFilter()
-    tuber.SetInputDataObject(fiberPolyData)
-    tuber.Update()
-    polyData = tuber.GetOutput()
-    normalsArray = polyData.GetPointData().GetArray('TubeNormals')
-    if not normalsArray:
-      return None
-    normalsArray.SetName('Normals')
+      fiberPolyData = fiber.GetPolyData()
+
     model = slicer.vtkMRMLModelNode()
     model.SetName("ModelFrom_"+fiber.GetID())
-    model.SetAndObservePolyData(polyData)
-    tubeDisplay = fiber.GetTubeDisplayNode()
-    if tubeDisplay:
-      color = json.dumps(list(tubeDisplay.GetColor()))
+    displayNode = None
+    if self.fiberMode == "tubes":
+      tuber = vtk.vtkTubeFilter()
+      tuber.SetInputDataObject(fiberPolyData)
+      tuber.Update()
+      polyData = tuber.GetOutput()
+      model.SetAndObservePolyData(polyData)
+      normalsArray = polyData.GetPointData().GetArray('TubeNormals')
+      if not normalsArray:
+        return None
+      normalsArray.SetName('Normals')
+      displayNode = fiber.GetTubeDisplayNode()
+    elif self.fiberMode == "lines":
+      model.SetAndObservePolyData(fiberPolyData)
+      displayNode = fiber.GetLineDisplayNode()
+    if displayNode:
+      color = json.dumps(list(displayNode.GetColor()))
       model.SetAttribute("color", color)
-      model.SetAttribute("visibility", str(tubeDisplay.GetVisibility()))
+      model.SetAttribute("visibility", str(displayNode.GetVisibility()))
     return(model)
 
     notes = """
@@ -1234,6 +1329,14 @@ space origin: %%origin%%
     except KeyError:
       format = 'glTF'
     try:
+      targetFiberCount = q['targetFiberCount'][0].strip().lower()
+    except KeyError:
+      targetFiberCount = None
+    try:
+      fiberMode = q['fiberMode'][0].strip().lower()
+    except KeyError:
+      fiberMode = 'lines'
+    try:
       id_ = q['id'][0].strip().lower()
     except KeyError:
       id_ = None
@@ -1242,7 +1345,10 @@ space origin: %%origin%%
       if id_:
         nodeFilter = lambda node: node.GetID().lower() == id_
       exporter = glTFExporter(slicer.mrmlScene)
-      return (exporter.export(nodeFilter))
+      return (exporter.export(nodeFilter, options={
+        "targetFiberCount": targetFiberCount,
+        "fiberMode": fiberMode
+      }))
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
@@ -1771,7 +1877,6 @@ class WebServerLogic:
 
     moduleDirectory = os.path.dirname(slicer.modules.webserver.path)
     self.docroot = moduleDirectory + "/docroot"
-
 
   def logMessage(self,*args):
     for arg in args:
