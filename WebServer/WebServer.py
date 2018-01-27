@@ -202,11 +202,13 @@ class glTFExporter:
   def addModel(self, model):
     """Add a mrml model node as a glTF node"""
     if self.modelMode == "triangles":
+      print('adding triangles')
       triangles = vtk.vtkTriangleFilter()
       triangles.SetInputDataObject(model.GetPolyData())
       triangles.Update()
       polyData = triangles.GetOutput()
     elif self.modelMode == "lines":
+      print('adding lines')
       polyData = model.GetPolyData()
     if not polyData.GetPoints():
       print ('Skipping model with no points %s)' % model.GetName())
@@ -226,6 +228,7 @@ class glTFExporter:
         diffuseColor = json.loads(color)
       visible = model.GetAttribute('visibility') == '1'
     if not visible:
+      print('skipping invisible')
       return
     modelID = model.GetID()
     if modelID is None:
@@ -642,6 +645,12 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(self.qiicrChartButton)
     self.qiicrChartButton.connect('clicked()', self.openQIICRChartDemo)
 
+    # export scene
+    self.exportSceneButton = qt.QPushButton("Export Scene")
+    self.exportSceneButton.toolTip = "Export the current scene to a web site (only models and tracts supported)."
+    self.layout.addWidget(self.exportSceneButton)
+    self.exportSceneButton.connect('clicked()', self.exportScene)
+
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
 
@@ -698,6 +707,14 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.detailsPopup.offerLoadables(seriesUID, 'Series')
     self.detailsPopup.examineForLoading()
     self.detailsPopup.loadCheckedLoadables()
+
+  def exportScene(self):
+    exportDirectory = ctk.ctkFileDialog.getExistingDirectory()
+    if exportDirectory.endswith('/untitled'):
+      # this happens when you select inside of a directory on mac
+      exportDirectory = exportDirectory[:-len('/untitled')]
+    if exportDirectory != '':
+      self.logic.exportScene(exportDirectory)
 
   def onReload(self):
     self.logic.stop()
@@ -1877,6 +1894,83 @@ class WebServerLogic:
 
     moduleDirectory = os.path.dirname(slicer.modules.webserver.path)
     self.docroot = moduleDirectory + "/docroot"
+
+  def getSceneBounds(self):
+    # scene bounds
+    sceneBounds = None
+    for node in slicer.util.getNodes('*').values():
+      if node.IsA('vtkMRMLDisplayableNode'):
+        bounds = [0,]*6
+        if sceneBounds is None:
+          sceneBounds = bounds
+        node.GetRASBounds(bounds)
+        for element in range(0,6):
+          op = (min,max)[element % 2]
+          sceneBounds[element] = op(sceneBounds[element], bounds[element])
+    return sceneBounds
+
+  def exportScene(self, exportDirectory):
+    """Export a simple scene that can run independent of Slicer.
+
+    This exports the data in a standard format with the idea that other
+    sites can be built externally to make the data more usable."""
+
+    scale = 15
+    sceneBounds = self.getSceneBounds()
+    center = [ 0.5 * (sceneBounds[0]+sceneBounds[1]), 0.5 * (sceneBounds[2]+sceneBounds[3]),  0.5 * (sceneBounds[4]+sceneBounds[5]) ]
+    target = [scale * center[0] / 1000., scale * center[1] / 1000., scale * center[2] / 1000.]
+
+    cameraPosition = [target[1], target[2], target[0] + 2]
+
+    html = """<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="https://aframe.io/releases/0.6.1/aframe.min.js"></script>
+    <script src="https://cdn.rawgit.com/tizzle/aframe-orbit-controls-component/v0.1.12/dist/aframe-orbit-controls-component.min.js"></script>
+    <style type="text/css">
+      * {font-family: sans-serif;}
+    </style>
+  </head>
+  <body>
+
+    <a-scene >
+      <a-entity
+          id="camera"
+          camera="fov: 80; zoom: 1;"
+          position="%CAMERA_POSITION%"
+          orbit-controls="
+              autoRotate: false;
+              target: #target;
+              enableDamping: true;
+              dampingFactor: 0.125;
+              rotateSpeed:0.25;
+              minDistance:1;
+              maxDistance:100;
+              "
+          >
+      </a-entity>
+
+      <a-entity id="target" position="%TARGET_POSITION%"></a-entity>
+      <a-entity id="mrml" position="0 0 0" scale="%SCALE%" rotation="-90 180 0">
+        <a-gltf-model src="./mrml.gltf"></a-gltf-model>
+      </a-entity>
+    </a-scene>
+
+  </body>
+</html>
+"""
+    html = html.replace("%CAMERA_POSITION%", "%g %g %g" % (cameraPosition[0], cameraPosition[1], cameraPosition[2]))
+    html = html.replace("%SCALE%", "%g %g %g" % (scale, scale, scale))
+    html = html.replace("%TARGET_POSITION%", "%g %g %g" % (target[1], target[2], target[0]))
+
+    htmlPath = os.path.join(exportDirectory, "index.html")
+    print('saving to', htmlPath)
+    fp = open(htmlPath, "w")
+    fp.write(html)
+    fp.close()
+
+
 
   def logMessage(self,*args):
     for arg in args:
