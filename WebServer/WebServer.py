@@ -42,7 +42,7 @@ import base64
 
 class glTFExporter:
   """
-  Export a subset of mrml data to glTF format (https://www.khronos.org/gltf).
+  Export a subset of mrml data to glTF 1.0 format (https://www.khronos.org/gltf).
 
   This could be factored to a separate module, but it's developed
   here for simplicity of reloading and debugging.
@@ -52,23 +52,26 @@ class glTFExporter:
   def __init__(self,mrmlScene):
     self.mrmlScene = mrmlScene
     self.sceneDefaults()
+    self.buffers = {} # binary data for later access
 
-  def export(self,nodeFilter=lambda node: True, options={}):
+  def export(self, options={}):
     """
     Returns a json document string in the format supported by glTF
     and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
     some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
 
-    nodeFilter is a callable that returns true if the node should be included in the export
     options includes:
+      nodeFilter : a callable that returns true if the node should be included in the export
       targetFiberCount : can be None for no limit or an integer
       fiberMode : can be "lines" or "tubes"
       modelMode : can be "lines" or "triangles"
     """
 
+    self.nodeFilter= options['nodeFilter'] if 'nodeFilter' in options else lambda node: True
     self.targetFiberCount = options['targetFiberCount'] if "targetFiberCount" in options else None
     self.fiberMode = options['fiberMode'] if "fiberMode" in options else "tubes"
     self.modelMode = "lines" if self.fiberMode == "lines" else "triangles"
+
 
     if self.fiberMode not in ["lines", "tubes"]:
       print('Bad fiber mode %s' % self.fiberMode)
@@ -81,13 +84,13 @@ class glTFExporter:
     # things specific to each model node
     models = slicer.util.getNodes('vtkMRMLModelNode*')
     for model in models.values():
-      if nodeFilter(model):
+      if self.nodeFilter(model):
         self.addModel(model)
 
     # things specific to each fiber node
     fibers = slicer.util.getNodes('vtkMRMLFiberBundleNode*')
     for fiber in fibers.values():
-      if nodeFilter(fiber):
+      if self.nodeFilter(fiber):
         model = self.fiberToModel(fiber)
         if model:
           self.addModel(model)
@@ -309,12 +312,14 @@ class glTFExporter:
     pointFloatArray = polyData.GetPoints().GetData()
     pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray) / 1000.  # convert to meters
     base64PointArray = base64.b64encode(pointNumpyArray)
+    pointBufferFileName = "Buffer_Position_"+modelID+".bin"
+    self.buffers[pointBufferFileName] = pointNumpyArray
     bounds = polyData.GetBounds()
 
     self.glTF["buffers"]["Buffer_Position_"+modelID] = {
         "byteLength": len(base64PointArray),
         "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64PointArray,
+        "uri": pointBufferFileName,
     }
     self.glTF["bufferViews"]["BufferView_Position_"+modelID] = {
         "buffer": "Buffer_Position_"+modelID,
@@ -339,11 +344,13 @@ class glTFExporter:
       normalFloatArray = polyData.GetPointData().GetArray('Normals')
       normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
       base64NormalArray = base64.b64encode(normalNumpyArray)
+      normalBufferFileName = "Buffer_Normal_"+modelID+".bin"
+      self.buffers[normalBufferFileName] = normalNumpyArray
 
       self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
           "byteLength": len(base64NormalArray),
           "type": "arraybuffer",
-          "uri": "data:application/octet-stream;base64,"+base64NormalArray,
+          "uri": normalBufferFileName,
       }
       self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
           "buffer": "Buffer_Normal_"+modelID,
@@ -395,12 +402,15 @@ class glTFExporter:
       triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
       # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
       triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
-      base64Indices = base64.b64encode(numpy.asarray(triangleIndexNumpyArray, order='C'))
+      triangleIndexCNumpyArray, order='C')
+      base64Indices = base64.b64encode(triangleIndexCNumpyArray)
+      indexBufferFileName = "Buffer_Indices_"+modelID+".bin"
+      self.buffers[indexBufferFileName] = triangleIndexCNumpyArray
 
       self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
           "byteLength": len(base64PointArray),
           "type": "arraybuffer",
-          "uri": "data:application/octet-stream;base64,"+base64Indices
+          "uri": indexBufferFileName,
       }
       self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
           "buffer": "Buffer_Indices_"+modelID,
@@ -446,12 +456,15 @@ class glTFExporter:
           linesIndex += 1
         polylineIndex += vertexCount
 
-      base64Indices = base64.b64encode(numpy.asarray(linesArray, order='C'))
+      polylineIndicesArray = numpy.asarray(linesArray, order='C')
+      base64Indices = base64.b64encode(polylineIndicesArray)
+      polylineIndicesBufferFileName = "Buffer_Indices_"+modelID+".bin"
+      self.buffers[polylineIndicesBufferFileName] = polylineIndicesArray
 
       self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
           "byteLength": len(base64PointArray),
           "type": "arraybuffer",
-          "uri": "data:application/octet-stream;base64,"+base64Indices
+          "uri": polylineIndicesBufferFileName
       }
       self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
           "buffer": "Buffer_Indices_"+modelID,
@@ -1362,7 +1375,8 @@ space origin: %%origin%%
       if id_:
         nodeFilter = lambda node: node.GetID().lower() == id_
       exporter = glTFExporter(slicer.mrmlScene)
-      return (exporter.export(nodeFilter, options={
+      return (exporter.export(options={
+        "nodeFilter": nodeFilter,
         "targetFiberCount": targetFiberCount,
         "fiberMode": fiberMode
       }))
@@ -1970,6 +1984,21 @@ class WebServerLogic:
     fp.write(html)
     fp.close()
 
+    exporter = glTFExporter(slicer.mrmlScene)
+    glTF = exporter.export(options={
+      "fiberMode": "tubes",
+    })
+    glTFPath = os.path.join(exportDirectory, "mrml.gltf")
+    print('saving to', glTFPath)
+    fp = open(glTFPath, "w")
+    fp.write(glTF)
+    fp.close()
+
+    for bufferFileName in exporter.buffers.keys():
+      print('saving to', bufferFileName)
+      fp = open(os.path.join(exportDirectory, bufferFileName), "wb")
+      fp.write(exporter.buffers[bufferFileName].data)
+      fp.close()
 
 
   def logMessage(self,*args):
