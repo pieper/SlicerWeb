@@ -70,7 +70,9 @@ class glTFExporter:
     self.nodeFilter= options['nodeFilter'] if 'nodeFilter' in options else lambda node: True
     self.targetFiberCount = options['targetFiberCount'] if "targetFiberCount" in options else None
     self.fiberMode = options['fiberMode'] if "fiberMode" in options else "tubes"
-    self.modelMode = "lines" if self.fiberMode == "lines" else "triangles"
+    # TODO: sort out line mode for fibers - use tubes for now
+    # self.modelMode = "lines" if self.fiberMode == "lines" else "triangles"
+    self.modelMode = "triangles"
 
 
     if self.fiberMode not in ["lines", "tubes"]:
@@ -378,7 +380,7 @@ class glTFExporter:
       triangleIndexCNumpyArray = numpy.asarray(triangleIndexNumpyArray, order='C')
       triangleIndexCNumpyArrayByteLength = triangleIndexCNumpyArray.size * triangleIndexCNumpyArray.itemsize
       indexBufferFileName = "Buffer_Indices_"+modelID+".bin"
-      self.buffers[indexBufferFileName] = triangleIndexCNumpyArray
+      self.buffers[indexBufferFileName] = numpy.array(triangleIndexCNumpyArray)
 
       self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
           "byteLength": triangleIndexCNumpyArrayByteLength,
@@ -556,7 +558,6 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
   """Uses ScriptedLoadableModuleWidget base class, available at:
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
-
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
@@ -776,6 +777,18 @@ class SlicerRequestHandler(object):
   def __init__(self, logMessage):
     self.logMessage = logMessage
 
+  def registerOneTimeBuffers(self, buffers):
+    """ This allows data to be made avalable for subsequent access
+    at a specific endpoint by filename.  To avoid memory buildup
+    they are only accessible once and then deleted.
+
+    The specific use case is for binary files containing glTF array
+    data that is referenced from the glTF json.
+    """
+    # TODO: this should not be stored in the widget, but that is a known place where it
+    # can persist across the lifetime of the server
+    slicer.modules.WebServerWidget.oneTimeBuffers = buffers
+
   def vtkImageDataToPNG(self,imageData,method='VTK'):
     """Return a buffer of png data using the data
     from the vtkImageData.
@@ -816,7 +829,19 @@ class SlicerRequestHandler(object):
     responseBody = None
     contentType = 'text/plain'
     try:
-      if cmd.find('/repl') == 0:
+      bufferFileName = cmd[1:-1] # strip first and last
+      if hasattr(slicer.modules.WebServerWidget, 'oneTimeBuffers'):
+        self.oneTimeBuffers = slicer.modules.WebServerWidget.oneTimeBuffers
+      else:
+        if not hasattr(self, 'oneTimeBuffers'):
+          self.oneTimeBuffers = {}
+      if bufferFileName in self.oneTimeBuffers.keys():
+        contentType = 'application/octet-stream',
+        responseStringIO = StringIO.StringIO()
+        responseStringIO.write(self.oneTimeBuffers[bufferFileName])
+        responseBody = responseStringIO.getvalue()
+        del(self.oneTimeBuffers[bufferFileName])
+      elif cmd.find('/repl') == 0:
         responseBody = self.repl(cmd, requestBody)
       elif cmd.find('/preset') == 0:
         responseBody = self.preset(cmd)
@@ -1348,11 +1373,13 @@ space origin: %%origin%%
       if id_:
         nodeFilter = lambda node: node.GetID().lower() == id_
       exporter = glTFExporter(slicer.mrmlScene)
-      return (exporter.export(options={
+      glTF = exporter.export(options={
         "nodeFilter": nodeFilter,
         "targetFiberCount": targetFiberCount,
         "fiberMode": fiberMode
-      }))
+      })
+      self.registerOneTimeBuffers(exporter.buffers)
+      return glTF
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
