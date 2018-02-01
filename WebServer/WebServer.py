@@ -402,7 +402,7 @@ class glTFExporter:
       triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
       # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
       triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
-      triangleIndexCNumpyArray, order='C')
+      triangleIndexCNumpyArray = numpy.asarray(triangleIndexNumpyArray, order='C')
       base64Indices = base64.b64encode(triangleIndexCNumpyArray)
       indexBufferFileName = "Buffer_Indices_"+modelID+".bin"
       self.buffers[indexBufferFileName] = triangleIndexCNumpyArray
