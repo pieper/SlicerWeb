@@ -311,19 +311,19 @@ class glTFExporter:
     # position
     pointFloatArray = polyData.GetPoints().GetData()
     pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray) / 1000.  # convert to meters
-    base64PointArray = base64.b64encode(pointNumpyArray)
+    pointNumpyArrayByteLength = pointNumpyArray.size * pointNumpyArray.itemsize
     pointBufferFileName = "Buffer_Position_"+modelID+".bin"
     self.buffers[pointBufferFileName] = pointNumpyArray
     bounds = polyData.GetBounds()
 
     self.glTF["buffers"]["Buffer_Position_"+modelID] = {
-        "byteLength": len(base64PointArray),
+        "byteLength": pointNumpyArrayByteLength,
         "type": "arraybuffer",
         "uri": pointBufferFileName,
     }
     self.glTF["bufferViews"]["BufferView_Position_"+modelID] = {
         "buffer": "Buffer_Position_"+modelID,
-        "byteLength": len(base64PointArray),
+        "byteLength": pointNumpyArrayByteLength,
         "byteOffset": 0,
         "target": 34962
     }
@@ -343,18 +343,18 @@ class glTFExporter:
       # normal
       normalFloatArray = polyData.GetPointData().GetArray('Normals')
       normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
-      base64NormalArray = base64.b64encode(normalNumpyArray)
+      normalNumpyArrayByteLength = normalNumpyArray.size * normalNumpyArray.itemsize
       normalBufferFileName = "Buffer_Normal_"+modelID+".bin"
       self.buffers[normalBufferFileName] = normalNumpyArray
 
       self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
-          "byteLength": len(base64NormalArray),
+          "byteLength": normalNumpyArrayByteLength,
           "type": "arraybuffer",
           "uri": normalBufferFileName,
       }
       self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
           "buffer": "Buffer_Normal_"+modelID,
-          "byteLength": len(base64NormalArray),
+          "byteLength": normalNumpyArrayByteLength,
           "byteOffset": 0,
           "target": 34962
       }
@@ -369,33 +369,6 @@ class glTFExporter:
           "type": "VEC3"
       }
 
-      # indices for triangle strips
-      # (not finished because it turns out aframe's glTF loader
-      # only supports lines and triangles)
-      stripFolly = """
-      stripCount = polyData.GetNumberOfStrips()
-      stripIndices = polyData.GetStrips().GetData()
-      stripVTKIndices = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
-      stripGLIndices = numpy.zeros(stripCount+len(stripVTKIndices), dtype='uint32')
-
-      stripVTKIndex = 0
-      stripGLIndex = 0
-      while stripVTKIndex < len(stripVTKIndices):
-        stripSize = stripVTKIndices[stripVTKIndex]
-        stripGLIndices[stripGLIndex:stripGLIndex+stripSize] = stripVTKIndices[stripVTKIndex+1:stripVTKIndex+1+stripSize]
-        stripGLIndices[stripGLIndex+stripSize+1] = stripGLIndices[stripGLIndex+stripSize]
-        firstIndexNextStrip = stripVTKIndex + stripSize + 2
-        if firstIndexNextStrip < len(stripVTKIndices):
-          stripGLIndices[stripGLIndex+stripSize+2] = stripVTKIndices[firstIndexNextStrip]
-        stripVTKIndex += 1+stripSize
-        stripGLIndex += stripSize
-
-      print(stripVTKIndices)
-      print(stripGLIndices)
-
-      base64StripIndices = base64.b64encode(stripGLIndices)
-      """
-
       # indices
       triangleCount = polyData.GetNumberOfPolys()
       triangleIndices = polyData.GetPolys().GetData()
@@ -403,19 +376,19 @@ class glTFExporter:
       # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
       triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
       triangleIndexCNumpyArray = numpy.asarray(triangleIndexNumpyArray, order='C')
-      base64Indices = base64.b64encode(triangleIndexCNumpyArray)
+      triangleIndexCNumpyArrayByteLength = triangleIndexCNumpyArray.size * triangleIndexCNumpyArray.itemsize
       indexBufferFileName = "Buffer_Indices_"+modelID+".bin"
       self.buffers[indexBufferFileName] = triangleIndexCNumpyArray
 
       self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
-          "byteLength": len(base64PointArray),
+          "byteLength": triangleIndexCNumpyArrayByteLength,
           "type": "arraybuffer",
           "uri": indexBufferFileName,
       }
       self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
           "buffer": "Buffer_Indices_"+modelID,
           "byteOffset": 0,
-          "byteLength": 4 * len(triangleIndexNumpyArray),
+          "byteLength": triangleIndexCNumpyArrayByteLength,
           "target": 34963
       }
       self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
@@ -457,12 +430,12 @@ class glTFExporter:
         polylineIndex += vertexCount
 
       polylineIndicesArray = numpy.asarray(linesArray, order='C')
-      base64Indices = base64.b64encode(polylineIndicesArray)
+      polylineIndicesArrayByteLength = polylineIndicesArray.size * polylineIndicesArray.itemsize
       polylineIndicesBufferFileName = "Buffer_Indices_"+modelID+".bin"
       self.buffers[polylineIndicesBufferFileName] = polylineIndicesArray
 
       self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
-          "byteLength": len(base64PointArray),
+          "byteLength": polylineIndicesArrayByteLength,
           "type": "arraybuffer",
           "uri": polylineIndicesBufferFileName
       }
@@ -1999,6 +1972,8 @@ class WebServerLogic:
       fp = open(os.path.join(exportDirectory, bufferFileName), "wb")
       fp.write(exporter.buffers[bufferFileName].data)
       fp.close()
+
+    print('done exporting')
 
 
   def logMessage(self,*args):
