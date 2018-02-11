@@ -871,6 +871,9 @@ class SlicerRequestHandler(object):
       elif cmd.find('/transform') == 0:
         responseBody = self.transform(cmd, requestBody)
         contentType = 'application/octet-stream',
+      elif cmd.find('/fiducials') == 0:
+        responseBody = self.fiducials(cmd, requestBody)
+        contentType = 'application/json',
       elif cmd.find('/fiducial') == 0:
         responseBody = self.fiducial(cmd, requestBody)
         contentType = 'application/json',
@@ -1320,6 +1323,27 @@ space origin: %%origin%%
     nrrdData.write(nrrdHeader)
     nrrdData.write(lpsArray.data)
     return nrrdData.getvalue()
+
+  def fiducials(self, cmd, requestBody):
+    """return fiducials list in ad hoc json structure"""
+    fiducials = {}
+    for markupsNode in slicer.util.getNodesByClass('vtkMRMLMarkupsFiducialNode'):
+      displayNode = markupsNode.GetDisplayNode()
+      node = {}
+      node['name'] = markupsNode.GetName()
+      node['color'] = displayNode.GetSelectedColor()
+      node['scale'] = displayNode.GetGlyphScale()
+      node['markups'] = []
+      for markupIndex in xrange(markupsNode.GetNumberOfMarkups()):
+        position = [0,]*3
+        markupsNode.GetNthFiducialPosition(markupIndex, position)
+        position
+        node['markups'].append( {
+          'label': markupsNode.GetNthFiducialLabel(markupIndex),
+          'position': position
+        })
+      fiducials[markupsNode.GetID()] = node
+    return ( json.dumps( fiducials ) )
 
   def fiducial(self, cmd, requestBody):
     p = urlparse.urlparse(cmd)
