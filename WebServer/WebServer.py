@@ -626,7 +626,7 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(self.localQtConnectionButton)
     self.localQtConnectionButton.connect('clicked()', self.openQtLocalConnection)
 
-    # open local connection button
+    # qiicr chart button
     self.qiicrChartButton = qt.QPushButton("Open QIICR Chart Demo")
     self.qiicrChartButton.toolTip = "Open the QIICR chart demo.  You need to be on the internet to access the page and you need to have the QIICR Iowa data loaded in your DICOM database in order to drill down to the image level."
     self.layout.addWidget(self.qiicrChartButton)
@@ -637,6 +637,13 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.exportSceneButton.toolTip = "Export the current scene to a web site (only models and tracts supported)."
     self.layout.addWidget(self.exportSceneButton)
     self.exportSceneButton.connect('clicked()', self.exportScene)
+
+    # slivr button
+    self.slivrButton = qt.QPushButton("Open Slivr Demo")
+    self.slivrButton.toolTip = "Open the Slivr demo.  Example of VR export."
+    self.layout.addWidget(self.slivrButton)
+    self.slivrButton.connect('clicked()', self.openSlivrDemo)
+
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
@@ -702,6 +709,9 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
       exportDirectory = exportDirectory[:-len('/untitled')]
     if exportDirectory != '':
       self.logic.exportScene(exportDirectory)
+
+  def openSlivrDemo(self):
+    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016/slivr'))
 
   def onReload(self):
     self.logic.stop()
