@@ -34,503 +34,7 @@ except ImportError:
   hasImage = False
 hasImage = False
 
-#
-# glTFExporter
-#
-
-import base64
-
-class glTFExporter:
-  """
-  Export a subset of mrml data to glTF 1.0 format (https://www.khronos.org/gltf).
-
-  This could be factored to a separate module, but it's developed
-  here for simplicity of reloading and debugging.
-
-  This work was partially funded by NIH grant 3P41RR013218.
-  """
-  def __init__(self,mrmlScene):
-    self.mrmlScene = mrmlScene
-    self.sceneDefaults()
-    self.buffers = {} # binary data for later access
-
-  def export(self, options={}):
-    """
-    Returns a json document string in the format supported by glTF
-    and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
-    some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
-
-    options includes:
-      nodeFilter : a callable that returns true if the node should be included in the export
-      targetFiberCount : can be None for no limit or an integer
-      fiberMode : can be "lines" or "tubes"
-      modelMode : can be "lines" or "triangles"
-    """
-
-    self.nodeFilter= options['nodeFilter'] if 'nodeFilter' in options else lambda node: True
-    self.targetFiberCount = options['targetFiberCount'] if "targetFiberCount" in options else None
-    self.fiberMode = options['fiberMode'] if "fiberMode" in options else "tubes"
-    # TODO: sort out line mode for fibers - use tubes for now
-    # self.modelMode = "lines" if self.fiberMode == "lines" else "triangles"
-    self.modelMode = "triangles"
-
-
-    if self.fiberMode not in ["lines", "tubes"]:
-      print('Bad fiber mode %s' % self.fiberMode)
-      return None
-
-    if self.modelMode not in ["lines", "triangles"]:
-      print('Bad model mode %s' % self.modelMode)
-      return None
-
-    # things specific to each model node
-    models = slicer.util.getNodes('vtkMRMLModelNode*')
-    for model in models.values():
-      if self.nodeFilter(model):
-        self.addModel(model)
-
-    # things specific to each fiber node
-    fibers = slicer.util.getNodes('vtkMRMLFiberBundleNode*')
-    for fiber in fibers.values():
-      if self.nodeFilter(fiber):
-        model = self.fiberToModel(fiber)
-        if model:
-          self.addModel(model)
-
-    return(json.dumps(self.glTF))
-
-  def sceneDefaults(self):
-    self.glTF = {
-      "scene": "defaultScene",
-      "scenes": {
-        "defaultScene": {
-          "nodes": []
-        }
-      },
-      "extensionsUsed": [
-        "KHR_materials_common"
-      ],
-      "asset": {
-        "generator": "SlicerWeb.glTFExporter",
-        "premultipliedAlpha": False,
-        "profile": {
-          "api": "WebGL",
-          "version": "1.0"
-        },
-        "version": "1.1"
-      },
-      # these are populated by addModel
-      "nodes": {},
-      "meshes": {},
-      "accessors": {},
-      "buffers": {},
-      "bufferViews": {},
-      "materials": {},
-    }
-    self.glTF["animations"] = {}
-    self.glTF["skins"] = {}
-    self.glTF["shaders"] = {
-        "FragmentShader": {
-            "type": 35632,
-            "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0Owp2YXJ5aW5nIHZlYzMgdl9ub3JtYWw7CnVuaWZvcm0gdmVjNCB1X2RpZmZ1c2U7CnVuaWZvcm0gdmVjNCB1X3NwZWN1bGFyOwp1bmlmb3JtIGZsb2F0IHVfc2hpbmluZXNzOwp2b2lkIG1haW4odm9pZCkgewp2ZWMzIG5vcm1hbCA9IG5vcm1hbGl6ZSh2X25vcm1hbCk7CnZlYzQgY29sb3IgPSB2ZWM0KDAuLCAwLiwgMC4sIDAuKTsKdmVjNCBkaWZmdXNlID0gdmVjNCgwLiwgMC4sIDAuLCAxLik7CnZlYzQgc3BlY3VsYXI7CmRpZmZ1c2UgPSB1X2RpZmZ1c2U7CnNwZWN1bGFyID0gdV9zcGVjdWxhcjsKZGlmZnVzZS54eXogKj0gbWF4KGRvdChub3JtYWwsdmVjMygwLiwwLiwxLikpLCAwLik7CmNvbG9yLnh5eiArPSBkaWZmdXNlLnh5ejsKY29sb3IgPSB2ZWM0KGNvbG9yLnJnYiAqIGRpZmZ1c2UuYSwgZGlmZnVzZS5hKTsKZ2xfRnJhZ0NvbG9yID0gY29sb3I7Cn0K"
-        },
-        "VertexShader": {
-            "type": 35633,
-            "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0OwphdHRyaWJ1dGUgdmVjMyBhX3Bvc2l0aW9uOwphdHRyaWJ1dGUgdmVjMyBhX25vcm1hbDsKdmFyeWluZyB2ZWMzIHZfbm9ybWFsOwp1bmlmb3JtIG1hdDMgdV9ub3JtYWxNYXRyaXg7CnVuaWZvcm0gbWF0NCB1X21vZGVsVmlld01hdHJpeDsKdW5pZm9ybSBtYXQ0IHVfcHJvamVjdGlvbk1hdHJpeDsKdm9pZCBtYWluKHZvaWQpIHsKdmVjNCBwb3MgPSB1X21vZGVsVmlld01hdHJpeCAqIHZlYzQoYV9wb3NpdGlvbiwxLjApOwp2X25vcm1hbCA9IHVfbm9ybWFsTWF0cml4ICogYV9ub3JtYWw7CmdsX1Bvc2l0aW9uID0gdV9wcm9qZWN0aW9uTWF0cml4ICogcG9zOwp9Cg=="
-        }
-    }
-    self.glTF["techniques"] = {
-        "technique0": {
-            "attributes": {
-                "a_normal": "normal",
-                "a_position": "position"
-            },
-            "parameters": {
-                "diffuse": {
-                    "type": 35666
-                },
-                "modelViewMatrix": {
-                    "semantic": "MODELVIEW",
-                    "type": 35676
-                },
-                "normal": {
-                    "semantic": "NORMAL",
-                    "type": 35665
-                },
-                "normalMatrix": {
-                    "semantic": "MODELVIEWINVERSETRANSPOSE",
-                    "type": 35675
-                },
-                "position": {
-                    "semantic": "POSITION",
-                    "type": 35665
-                },
-                "projectionMatrix": {
-                    "semantic": "PROJECTION",
-                    "type": 35676
-                },
-                "shininess": {
-                    "type": 5126
-                },
-                "specular": {
-                    "type": 35666
-                }
-            },
-            "program": "program_0",
-            "states": {
-                "enable": [
-                    2929,
-                    2884
-                ]
-            },
-            "uniforms": {
-                "u_diffuse": "diffuse",
-                "u_modelViewMatrix": "modelViewMatrix",
-                "u_normalMatrix": "normalMatrix",
-                "u_projectionMatrix": "projectionMatrix",
-                "u_shininess": "shininess",
-                "u_specular": "specular"
-            }
-        }
-    }
-    self.glTF["programs"] = {
-        "program_0": {
-            "attributes": [
-                "a_normal",
-                "a_position"
-            ],
-            "fragmentShader": "FragmentShader",
-            "vertexShader": "VertexShader"
-        }
-    }
-
-  def addModel(self, model):
-    """Add a mrml model node as a glTF node"""
-    if self.modelMode == "triangles":
-      print('adding triangles')
-      triangles = vtk.vtkTriangleFilter()
-      triangles.SetInputDataObject(model.GetPolyData())
-      triangles.Update()
-      polyData = triangles.GetOutput()
-    elif self.modelMode == "lines":
-      print('adding lines')
-      polyData = model.GetPolyData()
-    if not polyData.GetPoints():
-      print ('Skipping model with no points %s)' % model.GetName())
-      return
-    display = model.GetDisplayNode()
-    diffuseColor = [0.2, 0.6, 0.8]
-    visible = True
-    nonOpaque = False
-    if display:
-      diffuseColor = list(display.GetColor())
-      visible = display.GetVisibility() == 1
-      nonOpaque = display.GetOpacity() < 1.0
-    else:
-      # hack for dealing with fiber bundles - see fiberToModel
-      color = model.GetAttribute('color')
-      if color:
-        diffuseColor = json.loads(color)
-      visible = model.GetAttribute('visibility') == '1'
-    if not visible:
-      print('skipping invisible')
-      return
-    modelID = model.GetID()
-    if modelID is None:
-      modelID = model.GetName()
-
-    if model.GetName().endswith('Volume Slice'):
-      print('skipping ', model.GetName())
-      return
-
-    self.glTF["nodes"][modelID] = {
-            "children": [],
-            "matrix": [ 1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 1, 0,
-                        0, 0, 0, 1. ],
-            "meshes": [
-                "Mesh_"+modelID
-            ],
-            "name": "Mesh"
-        }
-    self.glTF["scenes"]["defaultScene"]["nodes"].append(modelID)
-    glLines = 1
-    glTriangles = 4
-    if self.modelMode == "triangles":
-      self.glTF["meshes"]["Mesh_"+modelID] = {
-          "name": "Mesh_"+modelID,
-          "primitives": [
-              {
-                  "attributes": {
-                      "NORMAL": "Accessor_Normal_"+modelID,
-                      "POSITION": "Accessor_Position_"+modelID
-                  },
-                  "indices": "Accessor_Indices_"+modelID,
-                  "material": "Material_"+modelID,
-                  "mode": glLines if nonOpaque else glTriangles
-              }
-          ]
-      }
-    elif self.modelMode == "lines":
-      self.glTF["meshes"]["Mesh_"+modelID] = {
-          "name": "Mesh_"+modelID,
-          "primitives": [
-              {
-                  "attributes": {
-                      "POSITION": "Accessor_Position_"+modelID
-                  },
-                  "indices": "Accessor_Indices_"+modelID,
-                  "material": "Material_"+modelID,
-                  "mode": glLines
-              }
-          ]
-      }
-
-    self.glTF["materials"]["Material_"+modelID] = {
-        "name": "Material_"+modelID,
-        "extensions": {
-            "KHR_materials_common": {
-                "doubleSided": False,
-                "technique": "PHONG",
-                "transparent": False,
-                "values": {
-                    "ambient": [ 0, 0, 0, 1 ],
-                    "diffuse": diffuseColor,
-                    "emission": [ 0, 0, 0, 1 ],
-                    "specular": [ 0.174994, 0.174994, 0.174994, 1 ]
-                }
-            }
-        },
-    }
-
-    #
-    # for the polyData, create a set of
-    # buffer, bufferView, and accessor
-    # for the position, normal, and triangle strip indices
-    #
-
-    # position
-    pointFloatArray = polyData.GetPoints().GetData()
-    pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray) / 1000.  # convert to meters
-    pointNumpyArrayByteLength = pointNumpyArray.size * pointNumpyArray.itemsize
-    pointBufferFileName = "Buffer_Position_"+modelID+".bin"
-    self.buffers[pointBufferFileName] = pointNumpyArray
-    bounds = polyData.GetBounds()
-
-    self.glTF["buffers"]["Buffer_Position_"+modelID] = {
-        "byteLength": pointNumpyArrayByteLength,
-        "type": "arraybuffer",
-        "uri": pointBufferFileName,
-    }
-    self.glTF["bufferViews"]["BufferView_Position_"+modelID] = {
-        "buffer": "Buffer_Position_"+modelID,
-        "byteLength": pointNumpyArrayByteLength,
-        "byteOffset": 0,
-        "target": 34962
-    }
-    self.glTF["accessors"]["Accessor_Position_"+modelID] = {
-        "bufferView": "BufferView_Position_"+modelID,
-        "byteOffset": 0,
-        "byteStride": 12,
-        "componentType": 5126,
-        "count": pointFloatArray.GetNumberOfTuples(),
-        "type": "VEC3",
-        "min": [bounds[0],bounds[2],bounds[4]],
-        "max": [bounds[1],bounds[3],bounds[5]]
-    }
-
-    if self.modelMode == "triangles":
-
-      # normal
-      normalFloatArray = polyData.GetPointData().GetArray('Normals')
-      normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
-      normalNumpyArrayByteLength = normalNumpyArray.size * normalNumpyArray.itemsize
-      normalBufferFileName = "Buffer_Normal_"+modelID+".bin"
-      self.buffers[normalBufferFileName] = normalNumpyArray
-
-      self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
-          "byteLength": normalNumpyArrayByteLength,
-          "type": "arraybuffer",
-          "uri": normalBufferFileName,
-      }
-      self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
-          "buffer": "Buffer_Normal_"+modelID,
-          "byteLength": normalNumpyArrayByteLength,
-          "byteOffset": 0,
-          "target": 34962
-      }
-      self.glTF["accessors"]["Accessor_Normal_"+modelID] = {
-          "bufferView": "BufferView_Normal_"+modelID,
-          "byteOffset": 0,
-          "byteStride": 12,
-          "componentType": 5126,
-          "min": [ -1., -1., -1. ],
-          "max": [ 1., 1., 1. ],
-          "count": normalFloatArray.GetNumberOfTuples(),
-          "type": "VEC3"
-      }
-
-      # indices
-      triangleCount = polyData.GetNumberOfPolys()
-      triangleIndices = polyData.GetPolys().GetData()
-      triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
-      # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
-      triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
-      triangleIndexCNumpyArray = numpy.asarray(triangleIndexNumpyArray, order='C')
-      triangleIndexCNumpyArrayByteLength = triangleIndexCNumpyArray.size * triangleIndexCNumpyArray.itemsize
-      indexBufferFileName = "Buffer_Indices_"+modelID+".bin"
-      self.buffers[indexBufferFileName] = numpy.array(triangleIndexCNumpyArray)
-
-      self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
-          "byteLength": triangleIndexCNumpyArrayByteLength,
-          "type": "arraybuffer",
-          "uri": indexBufferFileName,
-      }
-      self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
-          "buffer": "Buffer_Indices_"+modelID,
-          "byteOffset": 0,
-          "byteLength": triangleIndexCNumpyArrayByteLength,
-          "target": 34963
-      }
-      self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
-          "bufferView": "BufferView_Indices_"+modelID,
-          "byteOffset": 0,
-          "byteStride": 0,
-          "componentType": 5125,
-          "count": len(triangleIndexNumpyArray),
-          "type": "SCALAR"
-      }
-
-    elif self.modelMode == "lines":
-
-      # indices
-      polylineCount = polyData.GetNumberOfLines()
-      lineIndices = polyData.GetLines().GetData()
-      polylineArray = vtk.util.numpy_support.vtk_to_numpy(lineIndices).astype('uint32')
-      # vtk stores the vertext count at the start of each polyline, but we need lines, meaning repeated indices unfortunately
-      # no way to know how many until we loop through
-      polylineIndex = 0
-      lineCount = 0
-      for polyline in xrange(polylineCount):
-        vertexCount = polylineArray[polylineIndex]
-        lineCount += 2 * (vertexCount - 1) # each pair in polyline is one line
-        polylineIndex += vertexCount + 1 # includes the vertexCount slot
-
-      linesArray = numpy.zeros(2 * lineCount, dtype='uint32') # two indices for each line
-      linesIndex = 0
-      polylineIndex = 0
-      for polyline in xrange(polylineCount):
-        vertexCount = polylineArray[polylineIndex]
-        polylineIndex += 1
-        linesCount = 2 * (vertexCount - 1) # all but one are doubled
-        for vertex in xrange(vertexCount-1):
-          linesArray[linesIndex] = polylineArray[polylineIndex + vertex]
-          linesIndex += 1
-          linesArray[linesIndex] = polylineArray[polylineIndex + vertex+1]
-          linesIndex += 1
-        polylineIndex += vertexCount
-
-      polylineIndicesArray = numpy.asarray(linesArray, order='C')
-      polylineIndicesArrayByteLength = polylineIndicesArray.size * polylineIndicesArray.itemsize
-      polylineIndicesBufferFileName = "Buffer_Indices_"+modelID+".bin"
-      self.buffers[polylineIndicesBufferFileName] = polylineIndicesArray
-
-      self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
-          "byteLength": polylineIndicesArrayByteLength,
-          "type": "arraybuffer",
-          "uri": polylineIndicesBufferFileName
-      }
-      self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
-          "buffer": "Buffer_Indices_"+modelID,
-          "byteOffset": 0,
-          "byteLength": 4 * len(linesArray),
-          "target": 34963
-      }
-      self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
-          "bufferView": "BufferView_Indices_"+modelID,
-          "byteOffset": 0,
-          "byteStride": 0,
-          "componentType": 5125,
-          "count": len(linesArray),
-          "type": "SCALAR"
-      }
-
-  def copyFirstNLines(self, sourcePolyData, lineCount):
-    """make a polydata with only the first N polylines"""
-
-    polyData = vtk.vtkPolyData()
-    points = vtk.vtkPoints()
-    polyData.SetPoints(points)
-
-    lines = vtk.vtkCellArray()
-    polyData.SetLines(lines)
-
-    sourcePoints = sourcePolyData.GetPoints()
-    sourceLines = sourcePolyData.GetLines()
-    sourceIdList = vtk.vtkIdList()
-    sourceLines.InitTraversal()
-    while sourceLines.GetNextCell(sourceIdList):
-        pointCount = sourceIdList.GetNumberOfIds()
-        idList = vtk.vtkIdList()
-        for idIndex in range(pointCount):
-            sourceId = sourceIdList.GetId(idIndex)
-            point = sourcePoints.GetPoint(sourceId)
-            id = points.InsertNextPoint(point)
-            idList.InsertNextId(id)
-        lines.InsertNextCell(idList)
-        if lines.GetNumberOfCells() > lineCount:
-            break
-
-    return polyData
-
-
-  def fiberToModel(self,fiber):
-    """Convert a vtkMRMLFiberBundleNode into a dummy vtkMRMLModelNode
-    so it can use the same converter.
-    Note: need to use attributes to send color since we cannot
-    add a display node to the dummy node since it is not in a scene.
-    If fiberMode is tube, create tubes from fiber tracts, else use lines from tracts
-    """
-    if self.targetFiberCount and int(self.targetFiberCount) < fiber.GetPolyData().GetNumberOfCells():
-      fiberPolyData = self.copyFirstNLines(fiber.GetPolyData(), int(self.targetFiberCount))
-    else:
-      fiberPolyData = fiber.GetPolyData()
-
-    model = slicer.vtkMRMLModelNode()
-    model.SetName("ModelFrom_"+fiber.GetID())
-    displayNode = None
-    if self.fiberMode == "tubes":
-      tuber = vtk.vtkTubeFilter()
-      tuber.SetInputDataObject(fiberPolyData)
-      tuber.Update()
-      polyData = tuber.GetOutput()
-      model.SetAndObservePolyData(polyData)
-      normalsArray = polyData.GetPointData().GetArray('TubeNormals')
-      if not normalsArray:
-        return None
-      normalsArray.SetName('Normals')
-      displayNode = fiber.GetTubeDisplayNode()
-    elif self.fiberMode == "lines":
-      model.SetAndObservePolyData(fiberPolyData)
-      displayNode = fiber.GetLineDisplayNode()
-    if displayNode:
-      color = json.dumps(list(displayNode.GetColor()))
-      model.SetAttribute("color", color)
-      model.SetAttribute("visibility", str(displayNode.GetVisibility()))
-    return(model)
-
-    notes = """
-      # TODO
-      # fa colors per vertex
-      scalars = tubes.GetPointData().GetArray(0)
-      scalars.SetName("scalars")
-
-      colorNode = lineDisplayNode.GetColorNode()
-      lookupTable = vtk.vtkLookupTable()
-      lookupTable.DeepCopy(colorNode.GetLookupTable())
-      lookupTable.SetTableRange(0,1)
-   """
+import glTFLib
 
 #
 # WebServer
@@ -541,12 +45,12 @@ class WebServer:
     parent.title = "Web Server"
     parent.categories = ["Servers"]
     parent.dependencies = []
-    parent.contributors = ["Steve Pieper (Isomics)"] # replace with "Firstname Lastname (Org)"
+    parent.contributors = ["Steve Pieper (Isomics)"]
     parent.helpText = """Provides an embedded web server for slicer that provides a web services API for interacting with slicer.
     """
     parent.acknowledgementText = """
 This work was partially funded by NIH grant 3P41RR013218.
-""" # replace with organization, grant and thanks.
+"""
     self.parent = parent
 
 
@@ -561,9 +65,8 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
 
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
-    self.observerTags = []
-    self.guiMessages = True
-    self.consoleMessages = True
+    self.guiMessages = False
+    self.consoleMessages = False
 
   def enter(self):
     pass
@@ -614,17 +117,23 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     # TODO: warning dialog on first connect
     # TODO: config option for port
 
-    # open local connection button
+    # open browser page
     self.localConnectionButton = qt.QPushButton("Open Browser Page")
     self.localConnectionButton.toolTip = "Open a connection to the server on the local machine with your system browser."
     self.layout.addWidget(self.localConnectionButton)
     self.localConnectionButton.connect('clicked()', self.openLocalConnection)
 
-    # open local connection button
-    self.localQtConnectionButton = qt.QPushButton("Open QtWebKit Page")
+    # open slicer widget
+    self.localQtConnectionButton = qt.QPushButton("Open SlicerWeb demo in WebWidget Page")
     self.localQtConnectionButton.toolTip = "Open a connection with Qt to the server on the local machine."
     self.layout.addWidget(self.localQtConnectionButton)
-    self.localQtConnectionButton.connect('clicked()', self.openQtLocalConnection)
+    self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('http://localhost:2016'))
+
+    # open step demo in widget
+    self.localQtConnectionButton = qt.QPushButton("Open Slicer WebWidget Page")
+    self.localQtConnectionButton.toolTip = "Open a connection with Qt to the server on the local machine."
+    self.layout.addWidget(self.localQtConnectionButton)
+    self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('https://pieper.github.io/sites/step'))
 
     # qiicr chart button
     self.qiicrChartButton = qt.QPushButton("Open QIICR Chart Demo")
@@ -654,30 +163,28 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
   def openLocalConnection(self):
     qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016'))
 
-  def openQtLocalConnection(self):
-    self.webView = qt.QWebView()
+  def openQtLocalConnection(self,url='http://localhost:2016'):
+    self.webWidget = slicer.qSlicerWebWidget()
     html = """
-    <h1>Loading from <a href="http://localhost:2016">Localhost 2016</a></h1>
-    """
-    self.webView.setHtml(html)
-    self.webView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
-    self.webView.setUrl(qt.QUrl('http://localhost:2016/work'))
-    self.webView.show()
+    <h1>Loading from <a href="%(url)s">%(url)s/a></h1>
+    """ % {'url' : url}
+    # self.webWidget.html = html
+    self.webWidget.url = 'http://localhost:2016/work'
+    self.webWidget.url = url
+    self.webWidget.show()
 
   def openQIICRChartDemo(self):
-    self.qiicrWebView = qt.QWebView()
-    self.qiicrWebView.setGeometry(50, 50, 1750, 1200)
-    url = "http://localhost:12345/dcsr/qiicr-chart/index.html"
+    self.qiicrWebWidget = slicer.qSlicerWebWidget()
+    self.qiicrWebWidget.setGeometry(50, 50, 1750, 1200)
     url = "http://pieper.github.io/qiicr-chart/dcsr/qiicr-chart"
     html = """
     <h1>Loading from <a href="%(url)s">%(url)s/a></h1>
     """ % {'url' : url}
-    self.qiicrWebView.setHtml(html)
-    self.qiicrWebView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
-    self.qiicrWebView.setUrl(qt.QUrl(url))
-    self.qiicrWebView.show()
+    # self.qiicrWebWidget.html = html
+    self.qiicrWebWidget.url = url
+    self.qiicrWebWidget.show()
 
-    page = self.qiicrWebView.page()
+    page = self.qiicrWebWidget.page()
     if not page.connect('statusBarMessage(QString)', self.qiicrChartMessage):
       logging.error('statusBarMessage connect failed')
 
@@ -779,6 +286,49 @@ class StaticRequestHandler(object):
     return contentType, responseBody
 
 #
+# DICOMRequestHandler
+#
+
+class DICOMRequestHandler(object):
+
+  def __init__(self, logMessage):
+    self.logMessage = logMessage
+    self.logMessage('Starting DICOMRequestHandler')
+
+  def handleRequest(self,uri,requestBody):
+    """Return directory listing or binary contents of files
+    TODO: other header fields like modified time
+    """
+    contentType = 'text/plain'
+    responseBody = None
+    if uri.startswith('/'):
+      uri = uri[1:]
+    path = os.path.join(self.docroot,uri)
+    self.logMessage('docroot: %s' % self.docroot)
+    if os.path.isdir(path):
+      for index in "index.html", "index.htm":
+        index = os.path.join(path, index)
+        if os.path.exists(index):
+          path = index
+    self.logMessage('Serving: %s' % path)
+    if os.path.isdir(path):
+      contentType = "text/html"
+      responseBody = "<ul>"
+      for entry in os.listdir(path):
+        responseBody += "<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
+    else:
+      ext = os.path.splitext(path)[-1]
+      if ext in mimetypes.types_map:
+        contentType = mimetypes.types_map[ext]
+      try:
+        fp = open(path, 'rb')
+        responseBody = fp.read()
+        fp.close()
+      except IOError:
+        responseBody = None
+    return contentType, responseBody
+
+#
 # SlicerRequestHandler
 #
 
@@ -834,12 +384,12 @@ class SlicerRequestHandler(object):
 
     return pngData
 
-  def handleSlicerCommand(self, cmd, requestBody):
+  def handleSlicerRequest(self, request, requestBody):
     import traceback
     responseBody = None
     contentType = 'text/plain'
     try:
-      bufferFileName = cmd[1:-1] # strip first and last
+      bufferFileName = request[1:-1] # strip first and last
       if hasattr(slicer.modules.WebServerWidget, 'oneTimeBuffers'):
         self.oneTimeBuffers = slicer.modules.WebServerWidget.oneTimeBuffers
       else:
@@ -851,54 +401,54 @@ class SlicerRequestHandler(object):
         responseStringIO.write(self.oneTimeBuffers[bufferFileName])
         responseBody = responseStringIO.getvalue()
         del(self.oneTimeBuffers[bufferFileName])
-      elif cmd.find('/repl') == 0:
-        responseBody = self.repl(cmd, requestBody)
-      elif cmd.find('/preset') == 0:
-        responseBody = self.preset(cmd)
-      elif cmd.find('/timeimage') == 0:
-        responseBody = self.timeimage(cmd)
-      elif cmd.find('/slice') == 0:
-        responseBody = self.slice(cmd)
+      elif request.find('/repl') == 0:
+        responseBody = self.repl(request, requestBody)
+      elif request.find('/preset') == 0:
+        responseBody = self.preset(request)
+      elif request.find('/timeimage') == 0:
+        responseBody = self.timeimage(request)
+      elif request.find('/slice') == 0:
+        responseBody = self.slice(request)
         contentType = 'image/png',
-      elif cmd.find('/threeD') == 0:
-        responseBody = self.threeD(cmd)
+      elif request.find('/threeD') == 0:
+        responseBody = self.threeD(request)
         contentType = 'image/png',
-      elif cmd.find('/mrml') == 0:
-        responseBody = self.mrml(cmd)
+      elif request.find('/mrml') == 0:
+        responseBody = self.mrml(request)
         contentType = 'application/json',
-      elif cmd.find('/tracking') == 0:
-        responseBody = self.tracking(cmd)
-      elif cmd.find('/eulers') == 0:
-        responseBody = self.eulers(cmd)
-      elif cmd.find('/volumeSelection') == 0:
-        responseBody = self.volumeSelection(cmd)
-      elif cmd.find('/volumes') == 0:
-        responseBody = self.volumes(cmd, requestBody)
+      elif request.find('/tracking') == 0:
+        responseBody = self.tracking(request)
+      elif request.find('/eulers') == 0:
+        responseBody = self.eulers(request)
+      elif request.find('/volumeSelection') == 0:
+        responseBody = self.volumeSelection(request)
+      elif request.find('/volumes') == 0:
+        responseBody = self.volumes(request, requestBody)
         contentType = 'application/json',
-      elif cmd.find('/volume') == 0:
-        responseBody = self.volume(cmd, requestBody)
+      elif request.find('/volume') == 0:
+        responseBody = self.volume(request, requestBody)
         contentType = 'application/octet-stream',
-      elif cmd.find('/transform') == 0:
-        responseBody = self.transform(cmd, requestBody)
+      elif request.find('/transform') == 0:
+        responseBody = self.transform(request, requestBody)
         contentType = 'application/octet-stream',
-      elif cmd.find('/fiducials') == 0:
-        responseBody = self.fiducials(cmd, requestBody)
+      elif request.find('/fiducials') == 0:
+        responseBody = self.fiducials(request, requestBody)
         contentType = 'application/json',
-      elif cmd.find('/fiducial') == 0:
-        responseBody = self.fiducial(cmd, requestBody)
+      elif request.find('/fiducial') == 0:
+        responseBody = self.fiducial(request, requestBody)
         contentType = 'application/json',
       else:
-        responseBody = "unknown command \"" + cmd + "\""
+        responseBody = "unknown command \"" + request + "\""
     except:
       message = traceback.format_exc()
-      self.logMessage("Could not handle slicer command: %s" % cmd)
+      self.logMessage("Could not handle slicer command: %s" % request)
       self.logMessage(message)
 
     return contentType, responseBody
 
-  def repl(self,cmd, requestBody):
+  def repl(self,request, requestBody):
     self.logMessage('repl with body %s' % requestBody)
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     if requestBody:
       source = requestBody
@@ -914,8 +464,8 @@ class SlicerRequestHandler(object):
     self.logMessage('result: %s' % result)
     return result
 
-  def preset(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def preset(self,request):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       id = q['id'][0].strip().lower()
@@ -1019,8 +569,8 @@ class SlicerRequestHandler(object):
         slicer.mrmlScene.AddNode(self.tracker)
         self.trackingDevice.SetAndObserveTransformNodeID(self.tracker.GetID())
 
-  def eulers(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def eulers(self,request):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
     alpha,beta,gamma = map(float,q['angles'][0].split(','))
@@ -1034,8 +584,8 @@ class SlicerRequestHandler(object):
 
     return ( "got it" )
 
-  def tracking(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def tracking(self,request):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
     transformMatrix = map(float,q['m'][0].split(','))
@@ -1053,8 +603,8 @@ class SlicerRequestHandler(object):
 
     return ( "got it" )
 
-  def volumeSelection(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def volumeSelection(self,request):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       cmd = q['cmd'][0].strip().lower()
@@ -1089,7 +639,7 @@ class SlicerRequestHandler(object):
     applicationLogic.PropagateVolumeSelection(0)
     return ( "got it" )
 
-  def volumes(self, cmd, requestBody):
+  def volumes(self, request, requestBody):
     volumes = []
     mrmlVolumes = slicer.util.getNodes('vtkMRMLScalarVolumeNode*')
     for id_ in mrmlVolumes.keys():
@@ -1097,8 +647,8 @@ class SlicerRequestHandler(object):
       volumes.append({"name": volumeNode.GetName(), "id": volumeNode.GetID()})
     return ( json.dumps( volumes ) )
 
-  def volume(self, cmd, requestBody):
-    p = urlparse.urlparse(cmd)
+  def volume(self, request, requestBody):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       volumeID = q['id'][0].strip()
@@ -1110,8 +660,8 @@ class SlicerRequestHandler(object):
     else:
       return self.getNRRD(volumeID)
 
-  def transform(self, cmd, requestBody):
-    p = urlparse.urlparse(cmd)
+  def transform(self, request, requestBody):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       transformID = q['id'][0].strip()
@@ -1334,7 +884,7 @@ space origin: %%origin%%
     nrrdData.write(lpsArray.data)
     return nrrdData.getvalue()
 
-  def fiducials(self, cmd, requestBody):
+  def fiducials(self, request, requestBody):
     """return fiducials list in ad hoc json structure"""
     fiducials = {}
     for markupsNode in slicer.util.getNodesByClass('vtkMRMLMarkupsFiducialNode'):
@@ -1355,8 +905,8 @@ space origin: %%origin%%
       fiducials[markupsNode.GetID()] = node
     return ( json.dumps( fiducials ) )
 
-  def fiducial(self, cmd, requestBody):
-    p = urlparse.urlparse(cmd)
+  def fiducial(self, request, requestBody):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       fiducialID = q['id'][0].strip()
@@ -1383,8 +933,8 @@ space origin: %%origin%%
     fiducialNode.SetNthFiducialPosition(index, float(r), float(a), float(s));
     return "{'result': 'ok'}"
 
-  def mrml(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def mrml(self,request):
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       format = q['format'][0].strip().lower()
@@ -1406,7 +956,7 @@ space origin: %%origin%%
       nodeFilter = lambda node: True
       if id_:
         nodeFilter = lambda node: node.GetID().lower() == id_
-      exporter = glTFExporter(slicer.mrmlScene)
+      exporter = glTFLib.glTFExporter(slicer.mrmlScene)
       glTF = exporter.export(options={
         "nodeFilter": nodeFilter,
         "targetFiberCount": targetFiberCount,
@@ -1417,7 +967,7 @@ space origin: %%origin%%
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
-  def slice(self,cmd):
+  def slice(self,request):
     """return a png for a slice view.
     Args:
      view={red, yellow, green}
@@ -1431,7 +981,7 @@ space origin: %%origin%%
     import vtk.util.numpy_support
     import numpy
 
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       view = q['view'][0].strip().lower()
@@ -1509,7 +1059,7 @@ space origin: %%origin%%
     self.logMessage('returning an image of %d length' % len(pngData))
     return pngData
 
-  def threeD(self,cmd):
+  def threeD(self,request):
     """return a png for a threeD view
     Args:
      view={nodeid} (currently ignored)
@@ -1526,7 +1076,7 @@ space origin: %%origin%%
     except ImportError:
         import StringIO
 
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       view = q['view'][0].strip().lower()
@@ -1664,12 +1214,12 @@ space origin: %%origin%%
     im.save(pngData, format="PNG")
     return pngData.getvalue()
 
-  def timeimage(self,cmd=''):
+  def timeimage(self,request=''):
     """For debugging - return an image with the current time
     rendered as text down to the hundredth of a second"""
 
     # check arguments
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request)
     q = urlparse.parse_qs(p.query)
     try:
       color = "#" + q['color'][0].strip().lower()
@@ -1743,6 +1293,7 @@ class SlicerHTTPServer(HTTPServer):
       self.docroot = docroot
       self.logMessage = logMessage
       self.slicerRequestHandler = SlicerRequestHandler(logMessage)
+      self.dicomRequestHandler = DICOMRequestHandler(logMessage)
       self.staticRequestHandler = StaticRequestHandler(self.docroot, logMessage)
       self.expectedRequestSize = -1
       self.requestSoFar = ""
@@ -1809,14 +1360,16 @@ class SlicerHTTPServer(HTTPServer):
 
         contentType = 'text/plain'
         responseBody = 'No body'
-        if not(os.path.dirname(uri).endswith('slicer')):
-          contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
+        url = urlparse.urlparse( uri )
+        action = os.path.basename( url.path )
+        request = '/' + action + '?' + url.query
+        self.logMessage('Parsing url: %s' % request)
+        if os.path.dirname(uri).endswith('slicer'):
+          contentType, responseBody = self.slicerRequestHandler.handleSlicerRequest(request, requestBody)
+        elif os.path.dirname(uri).endswith('dicom'):
+          contentType, responseBody = self.dicomRequestHandler.handleRequest(request, requestBody)
         else:
-          url = urlparse.urlparse( uri )
-          action = os.path.basename( url.path )
-          request = '/' + action + '?' + url.query
-          self.logMessage('Parsing url: %s' % request)
-          contentType, responseBody = self.slicerRequestHandler.handleSlicerCommand(request, requestBody)
+          contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
 
         if responseBody:
           self.response = "HTTP/1.1 200 OK\r\n"
@@ -2018,7 +1571,7 @@ class WebServerLogic:
     fp.write(html)
     fp.close()
 
-    exporter = glTFExporter(slicer.mrmlScene)
+    exporter = glTFLib.glTFExporter(slicer.mrmlScene)
     glTF = exporter.export(options={
       "fiberMode": "tubes",
     })
