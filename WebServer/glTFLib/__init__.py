@@ -1,1 +1,1 @@
-from glTF import *
+from .glTF import *

@@ -71,6 +71,7 @@
           routerBasename: "/ohif",
           rootUrl: "http://localhost:2016/ohif"
         };
+/*
         props.servers = {
             "dicomWeb": [
                 {
@@ -78,6 +79,23 @@
                     "wadoUriRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/wado",
                     "qidoRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs",
                     "wadoRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs",
+                    "qidoSupportsIncludeField": true,
+                    "imageRendering": "wadors",
+                    "thumbnailRendering": "wadors",
+                    "requestOptions": {
+                        "requestFromBrowser": true
+                    }
+                }
+            ]
+        };
+*/
+        props.servers = {
+            "dicomWeb": [
+                {
+                    "name": "Slicer",
+                    "wadoUriRoot": "http://localhost:2016/dicom",
+                    "qidoRoot": "http://localhost:2016/dicom",
+                    "wadoRoot": "http://localhost:2016/dicom",
                     "qidoSupportsIncludeField": true,
                     "imageRendering": "wadors",
                     "thumbnailRendering": "wadors",

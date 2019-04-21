@@ -71,7 +71,6 @@
         <a-image id='threeDView0' src='slicer/threeD' class='grabbable'></a-image>
       </a-entity>
 
-
     </a-scene>
 
     <canvas id="renderCanvas"></canvas>
@@ -85,16 +84,17 @@
   let mrml, probe, tracts;
   let lastRequest = Date.now();
   let pendingRequests = 0;
+  let seeds = [];
+  let tractographyRequest = undefined;
 
-  function updateProbe(event) {
-    if (Date.now() - lastRequest < 300 || pendingRequests > 0) {
+  function growSeed() {
+    let seed = seeds.shift();
+    if (!seed || tractographyRequest != undefined) {
       return;
     }
-    lastRequest = Date.now();
-    pendingRequests += 1;
-    billboard.setAttribute('text', `value: "${pendingRequests} pendingRequests"`);
-    let fiberNodeID = 'vtkMRMLFiberBundleNode1';
-    let position = event.target.getAttribute("position");
+    console.log(seed);
+    let position = seed.getAttribute("position");
+    AFRAME.scenes[0].removeChild(seed);
     let worldPosition = new THREE.Vector4(position.x, position.y, position.z, 1);
     let worldToMRML = new THREE.Matrix4()
     worldToMRML.getInverse(mrml.object3D.matrixWorld);
@@ -102,7 +102,7 @@
     mrmlPosition.multiplyScalar(1000); // convert to mm
 
     let request = `slicer/fiducial?r=${mrmlPosition.x}&a=${mrmlPosition.y}&s=${mrmlPosition.z}`;
-    let tractographyRequest = new XMLHttpRequest();
+    tractographyRequest = new XMLHttpRequest();
     tractographyRequest.open('GET', request);
     tractographyRequest.onreadystatechange = function() {
       if (tractographyRequest.readyState == 4) {
@@ -111,11 +111,33 @@
         newTracts.addEventListener('model-loaded', event => {
           pendingRequests += -1;
           billboard.setAttribute('text', `value: "${pendingRequests} pendingRequests"`);
+          tractographyRequest = undefined;
+          growSeed();
         });
         tracts.appendChild(newTracts);
       }
     };
     tractographyRequest.send();
+  }
+
+  function updateProbe(event) {
+    if (Date.now() - lastRequest < 30 || pendingRequests > 1000) {
+      return;
+    }
+    lastRequest = Date.now();
+    pendingRequests += 1;
+    billboard.setAttribute('text', `value: "${pendingRequests} pendingRequests"`);
+    let fiberNodeID = 'vtkMRMLFiberBundleNode1';
+    let position = event.target.getAttribute("position");
+    console.log('event target', event.target);
+
+    let seed = document.createElement('a-sphere');
+    seed.setAttribute('position', position);
+    seed.setAttribute('radius', 0.005);
+    seed.setAttribute('color', "#00aa44");
+    AFRAME.scenes[0].appendChild(seed);
+    seeds.push(seed);
+    growSeed();
   }
 
   document.addEventListener("DOMContentLoaded", event => {

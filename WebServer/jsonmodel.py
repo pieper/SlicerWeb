@@ -2,7 +2,7 @@ import dicom
 import json
 import six
 
-# TODO: what is pydicom practice?
+# TODO: what is pydicom practice for logging?
 def logger_debug(message):
    print(message)
 def logger_warning(message):
@@ -11,7 +11,7 @@ def logger_warning(message):
 # TODO: is this the whole list?
 _BINARY_VR_VALUES = ['OW', 'OB', 'OD', 'OF', 'OL', 'UN', 'OW/OB', 'OW or OB', 'OB or OW', 'US or SS']
 
-# these don't get auto-quoted by json for some reason
+# TODO: these don't get auto-quoted by json for some reason
 _VRs_TO_QUOTE = ['DS', 'AT']
 
 def _create_dataelement(tag, vr, value):
@@ -113,13 +113,17 @@ def _create_dataelement(tag, vr, value):
 
 
 
-def _data_element_to_json(data_element):
+def _data_element_to_json(data_element, element_handler):
     """Returns a json dictionary which is either a single
     element or a dictionary of elements representing a sequnce.
     """
     json_element = None
     if data_element.VR in _BINARY_VR_VALUES:
-        value = "Binary Omitted" # TODO
+        if element_handler:
+            # TODO: provide some example element_handler implementations
+            value = element_handler(data_element)
+        else:
+            value = "Binary Omitted" # TODO
     elif data_element.VR == "SQ":
         values = []
         for subelement in data_element:
@@ -127,7 +131,7 @@ def _data_element_to_json(data_element):
             values.append(to_json(subelement))
         value = values
     elif data_element.VR in _VRs_TO_QUOTE:
-        # switch to " from ' - why doesn't json do this?
+        # TODO: switch to " from ' - why doesn't json do this?
         value = ["%s" % data_element.value]
     else:
         value = data_element.value
@@ -142,6 +146,7 @@ def _data_element_to_json(data_element):
         if value is not None:
             json_element["Value"] = value
     except UnboundLocalError as e:
+        # TODO: there should be a better way to catch this
         print(e)
         print ("UnboundLocalError: ", data_element)
     return json_element
@@ -174,7 +179,7 @@ def from_json(json_dataset):
         dataset.add(data_element)
     return dataset
 
-def to_json(dataset):
+def to_json(dataset, element_handler=None):
     """
     Parameters
     ----------
@@ -194,7 +199,7 @@ def to_json(dataset):
         jkey = "%04X%04X" % (key.group,key.element)
         try:
             dataElement = dataset[key]
-            json_dataset_object[jkey] = _data_element_to_json(dataElement)
+            json_dataset_object[jkey] = _data_element_to_json(dataElement, element_handler)
         except KeyError:
             print("KeyError: ", key)
         except ValueError:

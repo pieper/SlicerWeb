@@ -2,39 +2,37 @@ import os
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
+import dicom
 import logging
 import random
 import sys
 import select
-import urlparse
-import urllib
-import json
 try:
-    import cStringIO as StringIO
+    import urlparse
 except ImportError:
-    import StringIO
+    import urllib
+    class urlparse(object):
+        urlparse = urllib.parse.urlparse
+        parse_qs = urllib.parse.parse_qs
+import json
 
 import string
 import time
 import socket
 import uuid
 
-from BaseHTTPServer import HTTPServer
+try:
+    from BaseHTTPServer import HTTPServer
+except ImportError:
+    from http.server import HTTPServer
+
 import mimetypes
 
 import numpy
 import vtk.util.numpy_support
 
-# Note: this needs to be installed in slicer's python
-# in order for any of the image operations to work
-hasImage = True
-try:
-  from PIL import Image
-except ImportError:
-  hasImage = False
-hasImage = False
-
 import glTFLib
+import jsonmodel
 
 #
 # WebServer
@@ -256,11 +254,11 @@ class StaticRequestHandler(object):
     """Return directory listing or binary contents of files
     TODO: other header fields like modified time
     """
-    contentType = 'text/plain'
+    contentType = b'text/plain'
     responseBody = None
-    if uri.startswith('/'):
+    if uri.startswith(b'/'):
       uri = uri[1:]
-    path = os.path.join(self.docroot,uri)
+    path = os.path.join(self.docroot,uri.decode())
     self.logMessage('docroot: %s' % self.docroot)
     if os.path.isdir(path):
       for index in "index.html", "index.htm":
@@ -269,14 +267,15 @@ class StaticRequestHandler(object):
           path = index
     self.logMessage('Serving: %s' % path)
     if os.path.isdir(path):
-      contentType = "text/html"
-      responseBody = "<ul>"
+      contentType = b"text/html"
+      responseBody = b"<ul>"
       for entry in os.listdir(path):
-        responseBody += "<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
+        responseBody += b"<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
+      responseBody = b"</ul>"
     else:
       ext = os.path.splitext(path)[-1]
       if ext in mimetypes.types_map:
-        contentType = mimetypes.types_map[ext]
+        contentType = mimetypes.types_map[ext].encode()
       try:
         fp = open(path, 'rb')
         responseBody = fp.read()
@@ -290,43 +289,90 @@ class StaticRequestHandler(object):
 #
 
 class DICOMRequestHandler(object):
+  """
+  Implements the mapping between DICOMweb endpoints
+  and ctkDICOMDatabase api calls.
+  """
 
   def __init__(self, logMessage):
     self.logMessage = logMessage
     self.logMessage('Starting DICOMRequestHandler')
+    self.retrieveURLTag = dicom.tag.Tag(0x00080190)
+    self.numberOfStudyRelatedSeriesTag = dicom.tag.Tag(0x00200206)
+    self.numberOfStudyRelatedInstancesTag = dicom.tag.Tag(0x00200208)
 
-  def handleRequest(self,uri,requestBody):
-    """Return directory listing or binary contents of files
-    TODO: other header fields like modified time
-    """
+  def handleDICOMRequest(self,parsedURL,requestBody):
     contentType = 'text/plain'
     responseBody = None
-    if uri.startswith('/'):
-      uri = uri[1:]
-    path = os.path.join(self.docroot,uri)
-    self.logMessage('docroot: %s' % self.docroot)
-    if os.path.isdir(path):
-      for index in "index.html", "index.htm":
-        index = os.path.join(path, index)
-        if os.path.exists(index):
-          path = index
-    self.logMessage('Serving: %s' % path)
-    if os.path.isdir(path):
-      contentType = "text/html"
-      responseBody = "<ul>"
-      for entry in os.listdir(path):
-        responseBody += "<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
-    else:
-      ext = os.path.splitext(path)[-1]
-      if ext in mimetypes.types_map:
-        contentType = mimetypes.types_map[ext]
-      try:
-        fp = open(path, 'rb')
-        responseBody = fp.read()
-        fp.close()
-      except IOError:
-        responseBody = None
+    splitPath = parsedURL.path.split('/')
+    if splitPath[2] == "studies":
+      contentType, responseBody = self.handleStudies(parsedURL, requestBody)
     return contentType, responseBody
+
+  def handleStudies(self, parsedURL, requestBody):
+    contentType = 'application/json'
+    print("parsedURL.path: ", parsedURL.path)
+    splitPath = parsedURL.path.split('/')
+    responseBody = "[{}]"
+    print('handle studies', parsedURL, splitPath)
+    if len(splitPath) == 3:
+      # studies qido search
+      print('looking for studies')
+      representativeSeries = None
+      studyResponseString = "["
+      for patient in slicer.dicomDatabase.patients():
+        for study in slicer.dicomDatabase.studiesForPatient(patient):
+          series = slicer.dicomDatabase.seriesForStudy(study)
+          numberOfStudyRelatedSeries = len(series)
+          numberOfStudyRelatedInstances = 0
+          modalitiesInStudy = set()
+          for serie in series:
+            seriesInstances = slicer.dicomDatabase.instancesForSeries(serie)
+            numberOfStudyRelatedInstances += len(seriesInstances)
+            if len(seriesInstances) > 0:
+              representativeSeries = serie
+              try:
+                dataset = dicom.read_file(slicer.dicomDatabase.fileForInstance(seriesInstances[0]))
+                modalitiesInStudy.add(dataset.Modality)
+              except AttributeError as e:
+                print('Could not get instance information for %s' % seriesInstances[0])
+                print(e)
+          if representativeSeries is None:
+            print('Could not find any instances for study %s' % study)
+            continue
+          instances = slicer.dicomDatabase.instancesForSeries(representativeSeries)
+          firstInstance = instances[0]
+          dataset = dicom.read_file(slicer.dicomDatabase.fileForInstance(firstInstance))
+          studyDataset = dicom.dataset.Dataset()
+          studyDataset.SpecificCharacterSet =  [u'ISO_IR 100']
+          studyDataset.StudyDate = dataset.StudyDate
+          studyDataset.StudyTime = dataset.StudyTime
+          studyDataset.AccessionNumber = dataset.AccessionNumber
+          studyDataset.InstanceAvailability = u'ONLINE'
+          studyDataset.ModalitiesInStudy = list(modalitiesInStudy)
+          studyDataset.ReferringPhysicianName = dataset.ReferringPhysicianName
+          studyDataset[self.retrieveURLTag] = dicom.dataelem.DataElement(
+              0x00080190, "UR", "TODO: provide WADO-RS RetrieveURL")
+          studyDataset.PatientName = dataset.PatientName
+          studyDataset.PatientID = dataset.PatientID
+          studyDataset.PatientBirthDate = dataset.PatientBirthDate
+          studyDataset.PatientSex = dataset.PatientSex
+          studyDataset.StudyID = dataset.StudyID
+          studyDataset[self.numberOfStudyRelatedSeriesTag] = dicom.dataelem.DataElement(
+              self.numberOfStudyRelatedSeriesTag, "IS", str(numberOfStudyRelatedSeries))
+          studyDataset[self.numberOfStudyRelatedInstancesTag] = dicom.dataelem.DataElement(
+              self.numberOfStudyRelatedInstancesTag, "IS", str(numberOfStudyRelatedInstances))
+          studyResponseString += jsonmodel.to_json(studyDataset) + ","
+      if studyResponseString.endswith(','):
+        studyResponseString = studyResponseString[:-1]
+      studyResponseString += ']'
+      responseBody = studyResponseString
+
+    if splitPath[-1] == "metadata":
+        self.logMessage('returning metadata')
+        responseBody = """[{"00080005":{"vr":"CS","Value":["ISO_IR 100"]},"00080008":{"vr":"CS","Value":["DERIVED","PRIMARY"]},"00080012":{"vr":"DA","Value":["20010109"]},"00080013":{"vr":"TM","Value":["095710"]},"00080016":{"vr":"UI","Value":["1.2.840.10008.5.1.4.1.1.1"]},"00080018":{"vr":"UI","Value":["1.3.51.5145.5142.20010109.1105752.1.0.1"]},"00080020":{"vr":"DA","Value":["20010109"]},"00080022":{"vr":"DA","Value":["20010109"]},"00080023":{"vr":"DA","Value":["20010109"]},"00080030":{"vr":"TM","Value":["100821"]},"00080032":{"vr":"TM","Value":["100905"]},"00080033":{"vr":"TM","Value":["100905"]},"00080050":{"vr":"SH","Value":["0000000006"]},"00080060":{"vr":"CS","Value":["CR"]},"00080070":{"vr":"LO","Value":["AGFA"]},"00080080":{"vr":"LO"},"00080090":{"vr":"PN"},"00081010":{"vr":"SH","Value":["STATION_NAME"]},"00081030":{"vr":"LO","Value":["pelvis"]},"0008103E":{"vr":"LO","Value":["Lat. Pelvis"]},"00081040":{"vr":"LO"},"00081050":{"vr":"PN"},"00081060":{"vr":"PN"},"00081090":{"vr":"LO","Value":["ADC_51xx"]},"00100010":{"vr":"PN","Value":[{"Alphabetic":"MISTER^CR"}]},"00100020":{"vr":"LO","Value":["9227465"]},"00100030":{"vr":"DA"},"00100040":{"vr":"CS"},"00180015":{"vr":"CS","Value":["PELVIS"]},"00181000":{"vr":"LO","Value":["5142"]},"00181004":{"vr":"LO","Value":["FH08MY"]},"00181020":{"vr":"LO","Value":["VIPS1009"]},"00181164":{"vr":"DS","Value":[0.114,0.114]},"00181260":{"vr":"SH","Value":["AGFATEST"]},"00181401":{"vr":"LO","Value":["60291Ia713Ra"]},"00181402":{"vr":"CS","Value":["PORTRAIT"]},"00181403":{"vr":"CS","Value":["24CMX30CM"]},"00181404":{"vr":"US","Value":[645]},"00185101":{"vr":"CS","Value":["LL"]},"00186000":{"vr":"DS","Value":[400.0]},"00190010":{"vr":"LO","Value":["AGFA"]},"00191010":{"vr":"UN","InlineBinary":"TUVOVT02MDI5MSBDQz0wIE1DPTMuMDAgRUM9MS4wMCBMUj0xLjAwIE5SPTEuMDAg"},"00191011":{"vr":"UN","InlineBinary":"UCBCT09HRVJUXzEg"},"00191013":{"vr":"UN","InlineBinary":"UlAxS1Qg"},"00191014":{"vr":"UN","InlineBinary":"MS4yNi8yLjEzIA=="},"00191015":{"vr":"UN","InlineBinary":"Mi4wMw=="},"0020000D":{"vr":"UI","Value":["1.3.51.0.7.633918642.633920010109.6339100821"]},"0020000E":{"vr":"UI","Value":["1.3.51.5145.15142.20010109.1105752"]},"00200010":{"vr":"SH"},"00200011":{"vr":"IS","Value":[1]},"00200013":{"vr":"IS","Value":[1]},"00200060":{"vr":"CS"},"00201002":{"vr":"IS","Value":[1]},"00204000":{"vr":"LT","Value":["JAN 09 2001"]},"00280002":{"vr":"US","Value":[1]},"00280004":{"vr":"CS","Value":["MONOCHROME1"]},"00280010":{"vr":"US","Value":[2570]},"00280011":{"vr":"US","Value":[2040]},"00280030":{"vr":"DS","Value":[0.114,0.114]},"00280100":{"vr":"US","Value":[16]},"00280101":{"vr":"US","Value":[12]},"00280102":{"vr":"US","Value":[11]},"00280103":{"vr":"US","Value":[0]},"00281050":{"vr":"DS","Value":[1600.0]},"00281051":{"vr":"DS","Value":[2800.0]},"00281052":{"vr":"DS","Value":[200.0]},"00281053":{"vr":"DS","Value":[0.683760684]},"00281054":{"vr":"LO","Value":["OD"]},"7FE00010":{"vr":"OW","BulkDataURI":"http://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs/studies/1.3.51.0.7.633918642.633920010109.6339100821/series/1.3.51.5145.15142.20010109.1105752/instances/1.3.51.5145.5142.20010109.1105752.1.0.1"}},{"00080005":{"vr":"CS","Value":["ISO_IR 100"]},"00080008":{"vr":"CS","Value":["DERIVED","PRIMARY"]},"00080012":{"vr":"DA","Value":["20010109"]},"00080013":{"vr":"TM","Value":["095618"]},"00080016":{"vr":"UI","Value":["1.2.840.10008.5.1.4.1.1.1"]},"00080018":{"vr":"UI","Value":["1.3.51.5145.5142.20010109.1105627.1.0.1"]},"00080020":{"vr":"DA","Value":["20010109"]},"00080022":{"vr":"DA","Value":["20010109"]},"00080023":{"vr":"DA","Value":["20010109"]},"00080030":{"vr":"TM","Value":["100821"]},"00080032":{"vr":"TM","Value":["100821"]},"00080033":{"vr":"TM","Value":["100821"]},"00080050":{"vr":"SH","Value":["0000000006"]},"00080060":{"vr":"CS","Value":["CR"]},"00080070":{"vr":"LO","Value":["AGFA"]},"00080080":{"vr":"LO"},"00080090":{"vr":"PN"},"00081010":{"vr":"SH","Value":["STATION_NAME"]},"00081030":{"vr":"LO","Value":["pelvis"]},"0008103E":{"vr":"LO","Value":["Pelvis"]},"00081040":{"vr":"LO"},"00081050":{"vr":"PN"},"00081060":{"vr":"PN"},"00081090":{"vr":"LO","Value":["ADC_51xx"]},"00100010":{"vr":"PN","Value":[{"Alphabetic":"MISTER^CR"}]},"00100020":{"vr":"LO","Value":["9227465"]},"00100030":{"vr":"DA"},"00100040":{"vr":"CS"},"00180015":{"vr":"CS","Value":["PELVIS"]},"00181000":{"vr":"LO","Value":["5142"]},"00181004":{"vr":"LO","Value":["F8DBBT"]},"00181020":{"vr":"LO","Value":["VIPS1009"]},"00181164":{"vr":"DS","Value":[0.114,0.114]},"00181260":{"vr":"SH","Value":["AGFATEST"]},"00181401":{"vr":"LO","Value":["60141Ia713Ra"]},"00181402":{"vr":"CS","Value":["LANDSCAPE"]},"00181403":{"vr":"CS","Value":["35CMX43CM"]},"00181404":{"vr":"US","Value":[1031]},"00185101":{"vr":"CS","Value":["AP"]},"00186000":{"vr":"DS","Value":[400.0]},"00190010":{"vr":"LO","Value":["AGFA"]},"00191010":{"vr":"UN","InlineBinary":"TUVOVT02MDE0MSBDQz0wIE1DPTMuMDAgRUM9MS4wMCBMUj0yLjAwIE5SPTEuMDAg"},"00191011":{"vr":"UN","InlineBinary":"UCBCT09HRVJUXzAg"},"00191013":{"vr":"UN","InlineBinary":"UlAxS1Qg"},"00191014":{"vr":"UN","InlineBinary":"MS4zMy8yLjQwIA=="},"00191015":{"vr":"UN","InlineBinary":"Mi4zMw=="},"0020000D":{"vr":"UI","Value":["1.3.51.0.7.633918642.633920010109.6339100821"]},"0020000E":{"vr":"UI","Value":["1.3.51.5145.15142.20010109.1105627"]},"00200010":{"vr":"SH"},"00200011":{"vr":"IS","Value":[1]},"00200013":{"vr":"IS","Value":[1]},"00200060":{"vr":"CS"},"00201002":{"vr":"IS","Value":[1]},"00204000":{"vr":"LT","Value":["JAN 09 2001"]},"00280002":{"vr":"US","Value":[1]},"00280004":{"vr":"CS","Value":["MONOCHROME1"]},"00280010":{"vr":"US","Value":[3062]},"00280011":{"vr":"US","Value":[3730]},"00280030":{"vr":"DS","Value":[0.114,0.114]},"00280100":{"vr":"US","Value":[16]},"00280101":{"vr":"US","Value":[12]},"00280102":{"vr":"US","Value":[11]},"00280103":{"vr":"US","Value":[0]},"00281050":{"vr":"DS","Value":[1600.0]},"00281051":{"vr":"DS","Value":[2800.0]},"00281052":{"vr":"DS","Value":[200.0]},"00281053":{"vr":"DS","Value":[0.683760684]},"00281054":{"vr":"LO","Value":["OD"]},"7FE00010":{"vr":"OW","BulkDataURI":"http://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs/studies/1.3.51.0.7.633918642.633920010109.6339100821/series/1.3.51.5145.15142.20010109.1105627/instances/1.3.51.5145.5142.20010109.1105627.1.0.1"}}]"""
+    return contentType, responseBody
+
 
 #
 # SlicerRequestHandler
@@ -349,123 +395,108 @@ class SlicerRequestHandler(object):
     # can persist across the lifetime of the server
     slicer.modules.WebServerWidget.oneTimeBuffers = buffers
 
-  def vtkImageDataToPNG(self,imageData,method='VTK'):
+  def vtkImageDataToPNG(self,imageData):
     """Return a buffer of png data using the data
     from the vtkImageData.
     """
-    if method == 'PIL':
-      if imageData:
-        imageData.Update()
-        imageScalars = imageData.GetPointData().GetScalars()
-        imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
-        d = imageData.GetDimensions()
-        im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],4]) ) )
-      else:
-        # no data available, make a small black opaque image
-        a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
-        a[:,:,3] = 255
-        im = Image.fromarray( a )
-      #if size:
-        #im.thumbnail((size,size), Image.ANTIALIAS)
-      pngStringIO = StringIO.StringIO()
-      im.save(pngStringIO, format="PNG")
-      pngData = pngStringIO.getvalue()
-    elif method == 'VTK':
-      writer = vtk.vtkPNGWriter()
-      writer.SetWriteToMemory(True)
-      writer.SetInputData(imageData)
-      writer.SetCompressionLevel(0)
-      writer.Write()
-      result = writer.GetResult()
-      pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
-      pngStringIO = StringIO.StringIO()
-      pngStringIO.write(pngArray)
-      pngData = pngStringIO.getvalue()
+    writer = vtk.vtkPNGWriter()
+    writer.SetWriteToMemory(True)
+    writer.SetInputData(imageData)
+    # use compression 0 since data transfer is faster than compressing
+    writer.SetCompressionLevel(0)
+    writer.Write()
+    result = writer.GetResult()
+    pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
+    pngData = pngArray.tobytes()
 
     return pngData
 
   def handleSlicerRequest(self, request, requestBody):
-    import traceback
     responseBody = None
-    contentType = 'text/plain'
+    contentType = b'text/plain'
     try:
-      bufferFileName = request[1:-1] # strip first and last
       if hasattr(slicer.modules.WebServerWidget, 'oneTimeBuffers'):
         self.oneTimeBuffers = slicer.modules.WebServerWidget.oneTimeBuffers
       else:
         if not hasattr(self, 'oneTimeBuffers'):
           self.oneTimeBuffers = {}
+      bufferFileName = request[1:].decode() # strip first, make string
+      print('bufferFileName', bufferFileName)
       if bufferFileName in self.oneTimeBuffers.keys():
-        contentType = 'application/octet-stream',
-        responseStringIO = StringIO.StringIO()
-        responseStringIO.write(self.oneTimeBuffers[bufferFileName])
-        responseBody = responseStringIO.getvalue()
+        contentType = b'application/octet-stream',
+        responseBody = self.oneTimeBuffers[bufferFileName].tobytes()
         del(self.oneTimeBuffers[bufferFileName])
-      elif request.find('/repl') == 0:
+      elif request.find(b'/repl') == 0:
         responseBody = self.repl(request, requestBody)
-      elif request.find('/preset') == 0:
+      elif request.find(b'/preset') == 0:
         responseBody = self.preset(request)
-      elif request.find('/timeimage') == 0:
+      elif request.find(b'/timeimage') == 0:
         responseBody = self.timeimage(request)
-      elif request.find('/slice') == 0:
+        contentType = b'image/png'
+      elif request.find(b'/slice') == 0:
         responseBody = self.slice(request)
-        contentType = 'image/png',
-      elif request.find('/threeD') == 0:
+        contentType = b'image/png',
+      elif request.find(b'/threeD') == 0:
         responseBody = self.threeD(request)
-        contentType = 'image/png',
-      elif request.find('/mrml') == 0:
+        contentType = b'image/png',
+      elif request.find(b'/mrml') == 0:
         responseBody = self.mrml(request)
-        contentType = 'application/json',
-      elif request.find('/tracking') == 0:
+        contentType = b'application/json',
+      elif request.find(b'/tracking') == 0:
         responseBody = self.tracking(request)
-      elif request.find('/eulers') == 0:
+      elif request.find(b'/eulers') == 0:
         responseBody = self.eulers(request)
-      elif request.find('/volumeSelection') == 0:
+      elif request.find(b'/volumeSelection') == 0:
         responseBody = self.volumeSelection(request)
-      elif request.find('/volumes') == 0:
+      elif request.find(b'/volumes') == 0:
         responseBody = self.volumes(request, requestBody)
-        contentType = 'application/json',
-      elif request.find('/volume') == 0:
+        contentType = b'application/json',
+      elif request.find(b'/volume') == 0:
         responseBody = self.volume(request, requestBody)
-        contentType = 'application/octet-stream',
-      elif request.find('/transform') == 0:
+        contentType = b'application/octet-stream',
+      elif request.find(b'/transform') == 0:
         responseBody = self.transform(request, requestBody)
-        contentType = 'application/octet-stream',
-      elif request.find('/fiducials') == 0:
+        contentType = b'application/octet-stream',
+      elif request.find(b'/fiducials') == 0:
         responseBody = self.fiducials(request, requestBody)
-        contentType = 'application/json',
-      elif request.find('/fiducial') == 0:
+        contentType = b'application/json',
+      elif request.find(b'/fiducial') == 0:
         responseBody = self.fiducial(request, requestBody)
-        contentType = 'application/json',
+        contentType = b'application/json',
       else:
-        responseBody = "unknown command \"" + request + "\""
+        responseBody = b"unknown command \"" + request + b"\""
     except:
-      message = traceback.format_exc()
       self.logMessage("Could not handle slicer command: %s" % request)
-      self.logMessage(message)
-
+      etype, value, tb = sys.exc_info()
+      import traceback
+      self.logMessage(etype, value)
+      self.logMessage(traceback.format_tb(tb))
+      print(etype, value)
+      print(traceback.format_tb(tb))
+      for frame in traceback.format_tb(tb):
+        print(frame)
     return contentType, responseBody
 
   def repl(self,request, requestBody):
     self.logMessage('repl with body %s' % requestBody)
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     if requestBody:
       source = requestBody
     else:
       try:
-        source = urllib.unquote(q['source'][0])
+        source = urllib.parse.unquote(q['source'][0])
       except KeyError:
         self.logMessage('need to supply source code to run')
         return ""
     self.logMessage('will run %s' % source)
-    code = compile(source, '<slicr-repl>', 'single')
-    result = str(eval(code, globals()))
+    code = compile(source, '<slicr-repl>', 'exec')
+    result = eval(code, globals())
     self.logMessage('result: %s' % result)
     return result
 
   def preset(self,request):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       id = q['id'][0].strip().lower()
@@ -570,7 +601,7 @@ class SlicerRequestHandler(object):
         self.trackingDevice.SetAndObserveTransformNodeID(self.tracker.GetID())
 
   def eulers(self,request):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
     alpha,beta,gamma = map(float,q['angles'][0].split(','))
@@ -585,7 +616,7 @@ class SlicerRequestHandler(object):
     return ( "got it" )
 
   def tracking(self,request):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
     transformMatrix = map(float,q['m'][0].split(','))
@@ -593,8 +624,8 @@ class SlicerRequestHandler(object):
     self.setupMRMLTracking()
     m = self.tracker.GetMatrixTransformToParent()
     m.Identity()
-    for row in xrange(3):
-      for column in xrange(3):
+    for row in range(3):
+      for column in range(3):
         m.SetElement(row,column, transformMatrix[3*row+column])
         m.SetElement(row,column, transformMatrix[3*row+column])
         m.SetElement(row,column, transformMatrix[3*row+column])
@@ -604,7 +635,7 @@ class SlicerRequestHandler(object):
     return ( "got it" )
 
   def volumeSelection(self,request):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       cmd = q['cmd'][0].strip().lower()
@@ -648,7 +679,7 @@ class SlicerRequestHandler(object):
     return ( json.dumps( volumes ) )
 
   def volume(self, request, requestBody):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       volumeID = q['id'][0].strip()
@@ -661,7 +692,7 @@ class SlicerRequestHandler(object):
       return self.getNRRD(volumeID)
 
   def transform(self, request, requestBody):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       transformID = q['id'][0].strip()
@@ -781,9 +812,9 @@ class SlicerRequestHandler(object):
     directionLists = [[0,]*3,[0,]*3,[0,]*3]
     ijkToRAS = vtk.vtkMatrix4x4()
     volumeNode.GetIJKToRASMatrix(ijkToRAS)
-    for row in xrange(3):
+    for row in range(3):
       originList[row] = ijkToRAS.GetElement(row,3)
-      for column in xrange(3):
+      for column in range(3):
         element = ijkToRAS.GetElement(row,column)
         if row < 2:
           element *= -1
@@ -816,11 +847,8 @@ space origin: %%origin%%
 
 """.replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
 
-
-    nrrdData = StringIO.StringIO()
-    nrrdData.write(nrrdHeader)
-    nrrdData.write(volumeArray.data)
-    return nrrdData.getvalue()
+    nrrdData = nrrdHeader.encode() + volumeArray.tobytes()
+    return nrrdData
 
   def getTransformNRRD(self, transformID):
     """Return a nrrd binary blob with contents of the transform node"""
@@ -879,10 +907,8 @@ space origin: %%origin%%
 """.replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
 
 
-    nrrdData = StringIO.StringIO()
-    nrrdData.write(nrrdHeader)
-    nrrdData.write(lpsArray.data)
-    return nrrdData.getvalue()
+    nrrdData = nrrdHeader.encode() + lpsArray.tobytes()
+    return nrrdData
 
   def fiducials(self, request, requestBody):
     """return fiducials list in ad hoc json structure"""
@@ -894,7 +920,7 @@ space origin: %%origin%%
       node['color'] = displayNode.GetSelectedColor()
       node['scale'] = displayNode.GetGlyphScale()
       node['markups'] = []
-      for markupIndex in xrange(markupsNode.GetNumberOfMarkups()):
+      for markupIndex in range(markupsNode.GetNumberOfMarkups()):
         position = [0,]*3
         markupsNode.GetNthFiducialPosition(markupIndex, position)
         position
@@ -906,7 +932,7 @@ space origin: %%origin%%
     return ( json.dumps( fiducials ) )
 
   def fiducial(self, request, requestBody):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       fiducialID = q['id'][0].strip()
@@ -934,7 +960,7 @@ space origin: %%origin%%
     return "{'result': 'ok'}"
 
   def mrml(self,request):
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       format = q['format'][0].strip().lower()
@@ -963,7 +989,7 @@ space origin: %%origin%%
         "fiberMode": fiberMode
       })
       self.registerOneTimeBuffers(exporter.buffers)
-      return glTF
+      return glTF.encode()
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
@@ -975,14 +1001,12 @@ space origin: %%origin%%
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
-    pngMethod = 'PIL'
-    if not hasImage:
-      pngMethod = 'VTK'
     import vtk.util.numpy_support
     import numpy
 
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
+    print(p,q)
     try:
       view = q['view'][0].strip().lower()
     except KeyError:
@@ -1055,7 +1079,7 @@ space origin: %%origin%%
 
     imageData = sliceLogic.GetBlend().Update(0)
     imageData = sliceLogic.GetBlend().GetOutputDataObject(0)
-    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+    pngData = self.vtkImageDataToPNG(imageData)
     self.logMessage('returning an image of %d length' % len(pngData))
     return pngData
 
@@ -1066,17 +1090,10 @@ space origin: %%origin%%
      mode= (currently ignored)
      lookFromAxis = {L, R, A, P, I, S}
     """
-    pngMethod = 'PIL'
-    if not hasImage:
-      pngMethod = 'VTK'
     import numpy
     import vtk.util.numpy_support
-    try:
-        import cStringIO as StringIO
-    except ImportError:
-        import StringIO
 
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       view = q['view'][0].strip().lower()
@@ -1181,45 +1198,16 @@ space origin: %%origin%%
     w2i.Update()
     imageData = w2i.GetOutput()
 
-    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+    pngData = self.vtkImageDataToPNG(imageData)
     self.logMessage('threeD returning an image of %d length' % len(pngData))
     return pngData
-
-  def timeimagePIL(self):
-    """For debugging - return an image with the current time
-    rendered as text down to the hundredth of a second"""
-    if not hasImage:
-      self.logMessage('No image support')
-      return
-    from PIL import Image, ImageDraw, ImageFilter
-    try:
-        import cStringIO as StringIO
-    except ImportError:
-        import StringIO
-
-    # make an image
-    size = (100,30)             # size of the image to create
-    im = Image.new('RGB', size) # create the image
-    draw = ImageDraw.Draw(im)   # create a drawing object that is
-                                # used to draw on the new image
-    red = (255,200,100)    # color of our text
-    text_pos = (10,10) # top-left position of our text
-    text = str(time.time()) # text to draw
-    # Now, we'll do the drawing:
-    draw.text(text_pos, text, fill=red)
-    del draw # I'm done drawing so I don't need this anymore
-    im = im.filter(ImageFilter.SMOOTH)
-    # now, we tell the image to save as a PNG to the provided file-like object
-    pngData = StringIO.StringIO()
-    im.save(pngData, format="PNG")
-    return pngData.getvalue()
 
   def timeimage(self,request=''):
     """For debugging - return an image with the current time
     rendered as text down to the hundredth of a second"""
 
     # check arguments
-    p = urlparse.urlparse(request)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       color = "#" + q['color'][0].strip().lower()
@@ -1296,7 +1284,7 @@ class SlicerHTTPServer(HTTPServer):
       self.dicomRequestHandler = DICOMRequestHandler(logMessage)
       self.staticRequestHandler = StaticRequestHandler(self.docroot, logMessage)
       self.expectedRequestSize = -1
-      self.requestSoFar = ""
+      self.requestSoFar = b""
       fileno = self.connectionSocket.fileno()
       self.readNotifier = qt.QSocketNotifier(fileno, qt.QSocketNotifier.Read)
       self.readNotifier.connect('activated(int)', self.onReadable)
@@ -1304,15 +1292,15 @@ class SlicerHTTPServer(HTTPServer):
 
     def onReadable(self, fileno):
       self.logMessage('Reading...')
-      requestHeader = ""
-      requestBody = ""
+      requestHeader = b""
+      requestBody = b""
       requestComplete = False
       requestPart = ""
       try:
         requestPart = self.connectionSocket.recv(1024*1024)
-        self.logMessage('Just received... %d' % len(requestPart))
+        self.logMessage('Just received... %d bytes in this part' % len(requestPart))
         self.requestSoFar += requestPart
-        endOfHeader = self.requestSoFar.find('\r\n\r\n')
+        endOfHeader = self.requestSoFar.find(b'\r\n\r\n')
         if self.expectedRequestSize > 0:
           self.logMessage('received... %d of %d expected' % (len(self.requestSoFar), self.expectedRequestSize))
           if len(self.requestSoFar) >= self.expectedRequestSize:
@@ -1322,11 +1310,11 @@ class SlicerHTTPServer(HTTPServer):
         else:
           if endOfHeader != -1:
             self.logMessage('Looking for content in header...')
-            contentLengthTag = self.requestSoFar.find('Content-Length:')
+            contentLengthTag = self.requestSoFar.find(b'Content-Length:')
             if contentLengthTag != -1:
               tag = self.requestSoFar[contentLengthTag:]
-              numberStartIndex = tag.find(' ')
-              numberEndIndex = tag.find('\r\n')
+              numberStartIndex = tag.find(b' ')
+              numberEndIndex = tag.find(b'\r\n')
               contentLength = int(tag[numberStartIndex:numberEndIndex])
               self.expectedRequestSize = 4 + endOfHeader + contentLength
               self.logMessage('Expecting a body of %d, total size %d' % (contentLength, self.expectedRequestSize))
@@ -1334,7 +1322,9 @@ class SlicerHTTPServer(HTTPServer):
               self.logMessage('Found end of header with no content, so body is empty')
               requestHeader = self.requestSoFar[:-2]
               requestComplete = True
-      except socket.error, e:
+      except socket.error as e:
+        print('Socket error: ', e)
+        print('So far:\n', self.requestSoFar)
         requestComplete = True
 
       if len(requestPart) == 0 or requestComplete:
@@ -1346,42 +1336,58 @@ class SlicerHTTPServer(HTTPServer):
           self.logMessage("Ignoring empty request")
           return
 
-        requestLines = requestHeader.split('\r\n')
+        method,uri,version = [b'GET', b'/', b'HTTP/1.1'] # defaults
+        requestLines = requestHeader.split(b'\r\n')
         self.logMessage(requestLines[0])
-        method,uri,version = requestLines[0].split(' ')
-        if version != "HTTP/1.1":
+        try:
+          method,uri,version = requestLines[0].split(b' ')
+        except ValueError as e:
+          self.logMessage("Could not interpret first request lines: ", requestLines)
+
+        if requestLines == "":
+          self.logMessage("Assuming empty sting is HTTP/1.1 GET of /.")
+
+        if version != b"HTTP/1.1":
           self.logMessage("Warning, we don't speak %s", version)
+          return
 
         # TODO: methods = ["GET", "POST", "PUT", "DELETE"]
-        methods = ["GET", "POST"]
+        methods = [b"GET", b"POST", b"PUT"]
         if not method in methods:
           self.logMessage("Warning, we only handle %s" % methods)
           return
 
-        contentType = 'text/plain'
-        responseBody = 'No body'
-        url = urlparse.urlparse( uri )
-        action = os.path.basename( url.path )
-        request = '/' + action + '?' + url.query
-        self.logMessage('Parsing url: %s' % request)
-        if os.path.dirname(uri).endswith('slicer'):
+        contentType = b'text/plain'
+        responseBody = b'No body'
+        parsedURL = urlparse.urlparse( uri )
+        pathParts = os.path.split(parsedURL.path) # path is like /slicer/timeimage
+        action = pathParts[0]
+        request = parsedURL.path
+        if parsedURL.query != b"":
+          request += b'?' + parsedURL.query
+        self.logMessage('Parsing url request: ', parsedURL)
+        self.logMessage(' request is: %s' % request)
+        route = pathParts[0]
+        if route == b'/slicer':
+          request = request[len(b'/slicer'):]
+          self.logMessage(' request is: %s' % request)
           contentType, responseBody = self.slicerRequestHandler.handleSlicerRequest(request, requestBody)
-        elif os.path.dirname(uri).endswith('dicom'):
-          contentType, responseBody = self.dicomRequestHandler.handleRequest(request, requestBody)
+        elif route == '/dicom':
+          contentType, responseBody = self.dicomRequestHandler.handleDICOMRequest(parsedURL, requestBody)
         else:
           contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
 
         if responseBody:
-          self.response = "HTTP/1.1 200 OK\r\n"
-          self.response += "Access-Control-Allow-Origin: *\r\n"
-          self.response += "Content-Type: %s\r\n" % contentType
-          self.response += "Content-Length: %d\r\n" % len(responseBody)
-          self.response += "Cache-Control: no-cache\r\n"
-          self.response += "\r\n"
+          self.response = b"HTTP/1.1 200 OK\r\n"
+          self.response += b"Access-Control-Allow-Origin: *\r\n"
+          self.response += b"Content-Type: %s\r\n" % contentType
+          self.response += b"Content-Length: %d\r\n" % len(responseBody)
+          self.response += b"Cache-Control: no-cache\r\n"
+          self.response += b"\r\n"
           self.response += responseBody
         else:
-          self.response = "HTTP/1.1 404 Not Found\r\n"
-          self.response += "\r\n"
+          self.response = b"HTTP/1.1 404 Not Found\r\n"
+          self.response += b"\r\n"
 
         self.toSend = len(self.response)
         self.sentSoFar = 0
@@ -1397,7 +1403,7 @@ class SlicerHTTPServer(HTTPServer):
         self.response = self.response[sent:]
         self.sentSoFar += sent
         self.logMessage('sent: %d (%d of %d, %f%%)' % (sent, self.sentSoFar, self.toSend, 100.*self.sentSoFar / self.toSend))
-      except socket.error, e:
+      except socket.error as e:
         self.logMessage('Socket error while sending: %s' % e)
         sendError = True
 
@@ -1415,7 +1421,7 @@ class SlicerHTTPServer(HTTPServer):
         fileno = connectionSocket.fileno()
         self.requestCommunicators[fileno] = self.RequestCommunicator(connectionSocket, self.docroot, self.logMessage)
         self.logMessage('Connected on %s fileno %d' % (connectionSocket, connectionSocket.fileno()))
-      except socket.error, e:
+      except socket.error as e:
         self.logMessage('Socket Error', socket.error, e)
 
   def start(self):
@@ -1468,7 +1474,7 @@ class SlicerHTTPServer(HTTPServer):
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         s.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, 1 )
         s.bind( ( "", port ) )
-      except socket.error, e:
+      except socket.error as e:
         portFree = False
         port += 1
       finally:
