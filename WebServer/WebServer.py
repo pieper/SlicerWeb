@@ -7,6 +7,7 @@ import logging
 import random
 import sys
 import select
+
 try:
     import urlparse
 except ImportError:
@@ -421,7 +422,6 @@ class SlicerRequestHandler(object):
         if not hasattr(self, 'oneTimeBuffers'):
           self.oneTimeBuffers = {}
       bufferFileName = request[1:].decode() # strip first, make string
-      print('bufferFileName', bufferFileName)
       if bufferFileName in self.oneTimeBuffers.keys():
         contentType = b'application/octet-stream',
         responseBody = self.oneTimeBuffers[bufferFileName].tobytes()
@@ -676,7 +676,7 @@ class SlicerRequestHandler(object):
     for id_ in mrmlVolumes.keys():
       volumeNode = mrmlVolumes[id_]
       volumes.append({"name": volumeNode.GetName(), "id": volumeNode.GetID()})
-    return ( json.dumps( volumes ) )
+    return ( json.dumps(volumes).encode() )
 
   def volume(self, request, requestBody):
     p = urlparse.urlparse(request.decode())
