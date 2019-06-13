@@ -315,13 +315,14 @@ class DICOMRequestHandler(object):
     contentType = b'text/plain'
     responseBody = None
     splitPath = parsedURL.path.split(b'/')
-    if splitPath[2].startswith(b"studies"):
+    if len(splitPath) > 2 and splitPath[2].startswith(b"studies"):
       self.logMessage('handling studies')
       contentType, responseBody = self.handleStudies(parsedURL, requestBody)
-    elif splitPath[2].startswith(b"series"):
+    elif len(splitPath) > 2 and splitPath[2].startswith(b"series"):
       pass
     else:
-      self.logMessage('Unknown dicom request %s' % parsedURL.path)
+      self.logMessage('Looks like wadouri %s' % parsedURL.query)
+      contentType, responseBody = self.handleWADOURI(parsedURL, requestBody)
     return contentType, responseBody
 
   def handleStudies(self, parsedURL, requestBody):
@@ -402,6 +403,21 @@ class DICOMRequestHandler(object):
       if responseBody.endswith(b','):
         responseBody = responseBody[:-1]
       responseBody += b']'
+    return contentType, responseBody
+
+  def handleWADOURI(self, parsedURL, requestBody):
+    q = urlparse.parse_qs(parsedURL.query)
+    print(q)
+    try:
+      instanceUID = q[b'objectUID'][0].decode().strip()
+    except KeyError:
+      return None,None
+    self.logMessage('found uid %s' % instanceUID)
+    contentType = b'application/dicom'
+    path = slicer.dicomDatabase.fileForInstance(instanceUID)
+    fp = open(path, 'rb')
+    responseBody = fp.read()
+    fp.close()
     return contentType, responseBody
 
 
@@ -1395,7 +1411,6 @@ class SlicerHTTPServer(HTTPServer):
         responseBody = b'No body'
         parsedURL = urlparse.urlparse( uri )
         pathParts = os.path.split(parsedURL.path) # path is like /slicer/timeimage
-        action = pathParts[0]
         request = parsedURL.path
         if parsedURL.query != b"":
           request += b'?' + parsedURL.query
@@ -1406,7 +1421,7 @@ class SlicerHTTPServer(HTTPServer):
           request = request[len(b'/slicer'):]
           self.logMessage(' request is: %s' % request)
           contentType, responseBody = self.slicerRequestHandler.handleSlicerRequest(request, requestBody)
-        elif route.startswith(b'/dicom'):
+        elif parsedURL.path.startswith(b'/dicom'):
           self.logMessage(' dicom request is: %s' % request)
           contentType, responseBody = self.dicomRequestHandler.handleDICOMRequest(parsedURL, requestBody)
         else:
