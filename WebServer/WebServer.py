@@ -152,6 +152,12 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(self.slivrButton)
     self.slivrButton.connect('clicked()', self.openSlivrDemo)
 
+    # ohif button
+    self.ohifButton = qt.QPushButton("Open OHIF Demo")
+    self.ohifButton.toolTip = "Open the OHIF demo.  Example of dicomweb access."
+    self.layout.addWidget(self.ohifButton)
+    self.ohifButton.connect('clicked()', self.openOHIFDemo)
+
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
@@ -218,6 +224,9 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
 
   def openSlivrDemo(self):
     qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016/slivr'))
+
+  def openOHIFDemo(self):
+    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016/ohif'))
 
   def onReload(self):
     self.logic.stop()
@@ -303,24 +312,29 @@ class DICOMRequestHandler(object):
     self.numberOfStudyRelatedInstancesTag = dicom.tag.Tag(0x00200208)
 
   def handleDICOMRequest(self,parsedURL,requestBody):
-    contentType = 'text/plain'
+    contentType = b'text/plain'
     responseBody = None
-    splitPath = parsedURL.path.split('/')
-    if splitPath[2] == "studies":
+    splitPath = parsedURL.path.split(b'/')
+    if splitPath[2].startswith(b"studies"):
+      self.logMessage('handling studies')
       contentType, responseBody = self.handleStudies(parsedURL, requestBody)
+    elif splitPath[2].startswith(b"series"):
+      pass
+    else:
+      self.logMessage('Unknown dicom request %s' % parsedURL.path)
     return contentType, responseBody
 
   def handleStudies(self, parsedURL, requestBody):
-    contentType = 'application/json'
+    contentType = b'application/json'
     print("parsedURL.path: ", parsedURL.path)
-    splitPath = parsedURL.path.split('/')
-    responseBody = "[{}]"
+    splitPath = parsedURL.path.split(b'/')
+    responseBody = b"[{}]"
     print('handle studies', parsedURL, splitPath)
     if len(splitPath) == 3:
       # studies qido search
       print('looking for studies')
       representativeSeries = None
-      studyResponseString = "["
+      studyResponseString = b"["
       for patient in slicer.dicomDatabase.patients():
         for study in slicer.dicomDatabase.studiesForPatient(patient):
           series = slicer.dicomDatabase.seriesForStudy(study)
@@ -348,6 +362,8 @@ class DICOMRequestHandler(object):
           studyDataset.SpecificCharacterSet =  [u'ISO_IR 100']
           studyDataset.StudyDate = dataset.StudyDate
           studyDataset.StudyTime = dataset.StudyTime
+          studyDataset.StudyDescription = dataset.StudyDescription
+          studyDataset.StudyInstanceUID = dataset.StudyInstanceUID
           studyDataset.AccessionNumber = dataset.AccessionNumber
           studyDataset.InstanceAvailability = u'ONLINE'
           studyDataset.ModalitiesInStudy = list(modalitiesInStudy)
@@ -363,15 +379,2382 @@ class DICOMRequestHandler(object):
               self.numberOfStudyRelatedSeriesTag, "IS", str(numberOfStudyRelatedSeries))
           studyDataset[self.numberOfStudyRelatedInstancesTag] = dicom.dataelem.DataElement(
               self.numberOfStudyRelatedInstancesTag, "IS", str(numberOfStudyRelatedInstances))
-          studyResponseString += jsonmodel.to_json(studyDataset) + ","
-      if studyResponseString.endswith(','):
+          print(studyDataset)
+          studyResponseString += jsonmodel.to_json(studyDataset).encode() + b","
+      if studyResponseString.endswith(b','):
         studyResponseString = studyResponseString[:-1]
-      studyResponseString += ']'
+      studyResponseString += b']'
       responseBody = studyResponseString
-
-    if splitPath[-1] == "metadata":
-        self.logMessage('returning metadata')
-        responseBody = """[{"00080005":{"vr":"CS","Value":["ISO_IR 100"]},"00080008":{"vr":"CS","Value":["DERIVED","PRIMARY"]},"00080012":{"vr":"DA","Value":["20010109"]},"00080013":{"vr":"TM","Value":["095710"]},"00080016":{"vr":"UI","Value":["1.2.840.10008.5.1.4.1.1.1"]},"00080018":{"vr":"UI","Value":["1.3.51.5145.5142.20010109.1105752.1.0.1"]},"00080020":{"vr":"DA","Value":["20010109"]},"00080022":{"vr":"DA","Value":["20010109"]},"00080023":{"vr":"DA","Value":["20010109"]},"00080030":{"vr":"TM","Value":["100821"]},"00080032":{"vr":"TM","Value":["100905"]},"00080033":{"vr":"TM","Value":["100905"]},"00080050":{"vr":"SH","Value":["0000000006"]},"00080060":{"vr":"CS","Value":["CR"]},"00080070":{"vr":"LO","Value":["AGFA"]},"00080080":{"vr":"LO"},"00080090":{"vr":"PN"},"00081010":{"vr":"SH","Value":["STATION_NAME"]},"00081030":{"vr":"LO","Value":["pelvis"]},"0008103E":{"vr":"LO","Value":["Lat. Pelvis"]},"00081040":{"vr":"LO"},"00081050":{"vr":"PN"},"00081060":{"vr":"PN"},"00081090":{"vr":"LO","Value":["ADC_51xx"]},"00100010":{"vr":"PN","Value":[{"Alphabetic":"MISTER^CR"}]},"00100020":{"vr":"LO","Value":["9227465"]},"00100030":{"vr":"DA"},"00100040":{"vr":"CS"},"00180015":{"vr":"CS","Value":["PELVIS"]},"00181000":{"vr":"LO","Value":["5142"]},"00181004":{"vr":"LO","Value":["FH08MY"]},"00181020":{"vr":"LO","Value":["VIPS1009"]},"00181164":{"vr":"DS","Value":[0.114,0.114]},"00181260":{"vr":"SH","Value":["AGFATEST"]},"00181401":{"vr":"LO","Value":["60291Ia713Ra"]},"00181402":{"vr":"CS","Value":["PORTRAIT"]},"00181403":{"vr":"CS","Value":["24CMX30CM"]},"00181404":{"vr":"US","Value":[645]},"00185101":{"vr":"CS","Value":["LL"]},"00186000":{"vr":"DS","Value":[400.0]},"00190010":{"vr":"LO","Value":["AGFA"]},"00191010":{"vr":"UN","InlineBinary":"TUVOVT02MDI5MSBDQz0wIE1DPTMuMDAgRUM9MS4wMCBMUj0xLjAwIE5SPTEuMDAg"},"00191011":{"vr":"UN","InlineBinary":"UCBCT09HRVJUXzEg"},"00191013":{"vr":"UN","InlineBinary":"UlAxS1Qg"},"00191014":{"vr":"UN","InlineBinary":"MS4yNi8yLjEzIA=="},"00191015":{"vr":"UN","InlineBinary":"Mi4wMw=="},"0020000D":{"vr":"UI","Value":["1.3.51.0.7.633918642.633920010109.6339100821"]},"0020000E":{"vr":"UI","Value":["1.3.51.5145.15142.20010109.1105752"]},"00200010":{"vr":"SH"},"00200011":{"vr":"IS","Value":[1]},"00200013":{"vr":"IS","Value":[1]},"00200060":{"vr":"CS"},"00201002":{"vr":"IS","Value":[1]},"00204000":{"vr":"LT","Value":["JAN 09 2001"]},"00280002":{"vr":"US","Value":[1]},"00280004":{"vr":"CS","Value":["MONOCHROME1"]},"00280010":{"vr":"US","Value":[2570]},"00280011":{"vr":"US","Value":[2040]},"00280030":{"vr":"DS","Value":[0.114,0.114]},"00280100":{"vr":"US","Value":[16]},"00280101":{"vr":"US","Value":[12]},"00280102":{"vr":"US","Value":[11]},"00280103":{"vr":"US","Value":[0]},"00281050":{"vr":"DS","Value":[1600.0]},"00281051":{"vr":"DS","Value":[2800.0]},"00281052":{"vr":"DS","Value":[200.0]},"00281053":{"vr":"DS","Value":[0.683760684]},"00281054":{"vr":"LO","Value":["OD"]},"7FE00010":{"vr":"OW","BulkDataURI":"http://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs/studies/1.3.51.0.7.633918642.633920010109.6339100821/series/1.3.51.5145.15142.20010109.1105752/instances/1.3.51.5145.5142.20010109.1105752.1.0.1"}},{"00080005":{"vr":"CS","Value":["ISO_IR 100"]},"00080008":{"vr":"CS","Value":["DERIVED","PRIMARY"]},"00080012":{"vr":"DA","Value":["20010109"]},"00080013":{"vr":"TM","Value":["095618"]},"00080016":{"vr":"UI","Value":["1.2.840.10008.5.1.4.1.1.1"]},"00080018":{"vr":"UI","Value":["1.3.51.5145.5142.20010109.1105627.1.0.1"]},"00080020":{"vr":"DA","Value":["20010109"]},"00080022":{"vr":"DA","Value":["20010109"]},"00080023":{"vr":"DA","Value":["20010109"]},"00080030":{"vr":"TM","Value":["100821"]},"00080032":{"vr":"TM","Value":["100821"]},"00080033":{"vr":"TM","Value":["100821"]},"00080050":{"vr":"SH","Value":["0000000006"]},"00080060":{"vr":"CS","Value":["CR"]},"00080070":{"vr":"LO","Value":["AGFA"]},"00080080":{"vr":"LO"},"00080090":{"vr":"PN"},"00081010":{"vr":"SH","Value":["STATION_NAME"]},"00081030":{"vr":"LO","Value":["pelvis"]},"0008103E":{"vr":"LO","Value":["Pelvis"]},"00081040":{"vr":"LO"},"00081050":{"vr":"PN"},"00081060":{"vr":"PN"},"00081090":{"vr":"LO","Value":["ADC_51xx"]},"00100010":{"vr":"PN","Value":[{"Alphabetic":"MISTER^CR"}]},"00100020":{"vr":"LO","Value":["9227465"]},"00100030":{"vr":"DA"},"00100040":{"vr":"CS"},"00180015":{"vr":"CS","Value":["PELVIS"]},"00181000":{"vr":"LO","Value":["5142"]},"00181004":{"vr":"LO","Value":["F8DBBT"]},"00181020":{"vr":"LO","Value":["VIPS1009"]},"00181164":{"vr":"DS","Value":[0.114,0.114]},"00181260":{"vr":"SH","Value":["AGFATEST"]},"00181401":{"vr":"LO","Value":["60141Ia713Ra"]},"00181402":{"vr":"CS","Value":["LANDSCAPE"]},"00181403":{"vr":"CS","Value":["35CMX43CM"]},"00181404":{"vr":"US","Value":[1031]},"00185101":{"vr":"CS","Value":["AP"]},"00186000":{"vr":"DS","Value":[400.0]},"00190010":{"vr":"LO","Value":["AGFA"]},"00191010":{"vr":"UN","InlineBinary":"TUVOVT02MDE0MSBDQz0wIE1DPTMuMDAgRUM9MS4wMCBMUj0yLjAwIE5SPTEuMDAg"},"00191011":{"vr":"UN","InlineBinary":"UCBCT09HRVJUXzAg"},"00191013":{"vr":"UN","InlineBinary":"UlAxS1Qg"},"00191014":{"vr":"UN","InlineBinary":"MS4zMy8yLjQwIA=="},"00191015":{"vr":"UN","InlineBinary":"Mi4zMw=="},"0020000D":{"vr":"UI","Value":["1.3.51.0.7.633918642.633920010109.6339100821"]},"0020000E":{"vr":"UI","Value":["1.3.51.5145.15142.20010109.1105627"]},"00200010":{"vr":"SH"},"00200011":{"vr":"IS","Value":[1]},"00200013":{"vr":"IS","Value":[1]},"00200060":{"vr":"CS"},"00201002":{"vr":"IS","Value":[1]},"00204000":{"vr":"LT","Value":["JAN 09 2001"]},"00280002":{"vr":"US","Value":[1]},"00280004":{"vr":"CS","Value":["MONOCHROME1"]},"00280010":{"vr":"US","Value":[3062]},"00280011":{"vr":"US","Value":[3730]},"00280030":{"vr":"DS","Value":[0.114,0.114]},"00280100":{"vr":"US","Value":[16]},"00280101":{"vr":"US","Value":[12]},"00280102":{"vr":"US","Value":[11]},"00280103":{"vr":"US","Value":[0]},"00281050":{"vr":"DS","Value":[1600.0]},"00281051":{"vr":"DS","Value":[2800.0]},"00281052":{"vr":"DS","Value":[200.0]},"00281053":{"vr":"DS","Value":[0.683760684]},"00281054":{"vr":"LO","Value":["OD"]},"7FE00010":{"vr":"OW","BulkDataURI":"http://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs/studies/1.3.51.0.7.633918642.633920010109.6339100821/series/1.3.51.5145.15142.20010109.1105627/instances/1.3.51.5145.5142.20010109.1105627.1.0.1"}}]"""
+    else:
+      self.logMessage('returning canned metadata')
+      contentType = b'application/json'
+      responseBody = b"""[
+    {
+        "00080005": {
+            "Value": [
+                "ISO_IR 100"
+            ],
+            "vr": "CS"
+        },
+        "00080016": {
+            "Value": [
+                "1.2.840.10008.5.1.4.1.1.88.22"
+            ],
+            "vr": "UI"
+        },
+        "00080018": {
+            "Value": [
+                "2.25.270803070310948022047145632312050595914"
+            ],
+            "vr": "UI"
+        },
+        "00080020": {
+            "Value": [
+                "20180227"
+            ],
+            "vr": "DA"
+        },
+        "00080021": {
+            "Value": [
+                "20190328"
+            ],
+            "vr": "DA"
+        },
+        "00080023": {
+            "Value": [
+                "20190328"
+            ],
+            "vr": "DA"
+        },
+        "00080030": {
+            "Value": [
+                "091643"
+            ],
+            "vr": "TM"
+        },
+        "00080031": {
+            "Value": [
+                "061300"
+            ],
+            "vr": "TM"
+        },
+        "00080033": {
+            "Value": [
+                "061300"
+            ],
+            "vr": "TM"
+        },
+        "00080050": {
+            "Value": [
+                "2015031201"
+            ],
+            "vr": "SH"
+        },
+        "00080060": {
+            "Value": [
+                "SR"
+            ],
+            "vr": "CS"
+        },
+        "00080070": {
+            "Value": [
+                "Unspecified"
+            ],
+            "vr": "LO"
+        },
+        "00080090": {
+            "vr": "PN"
+        },
+        "00080110": {
+            "Value": [
+                {
+                    "00080102": {
+                        "Value": [
+                            "99dcmjs"
+                        ],
+                        "vr": "SH"
+                    },
+                    "00080103": {
+                        "Value": [
+                            "0"
+                        ],
+                        "vr": "SH"
+                    },
+                    "00080115": {
+                        "Value": [
+                            "Codes used for dcmjs"
+                        ],
+                        "vr": "ST"
+                    },
+                    "00080116": {
+                        "Value": [
+                            "https://github.com/dcmjs-org/dcmjs"
+                        ],
+                        "vr": "ST"
+                    }
+                }
+            ],
+            "vr": "SQ"
+        },
+        "0008103E": {
+            "Value": [
+                "Research Derived series"
+            ],
+            "vr": "LO"
+        },
+        "00081090": {
+            "Value": [
+                "Unspecified"
+            ],
+            "vr": "LO"
+        },
+        "00081111": {
+            "vr": "SQ"
+        },
+        "00100010": {
+            "vr": "PN"
+        },
+        "00100020": {
+            "Value": [
+                "PID_47110815"
+            ],
+            "vr": "LO"
+        },
+        "00100030": {
+            "vr": "DA"
+        },
+        "00100040": {
+            "vr": "CS"
+        },
+        "00101010": {
+            "vr": "AS"
+        },
+        "00181000": {
+            "Value": [
+                "1"
+            ],
+            "vr": "LO"
+        },
+        "00181020": {
+            "Value": [
+                "0"
+            ],
+            "vr": "LO"
+        },
+        "00189004": {
+            "Value": [
+                "RESEARCH"
+            ],
+            "vr": "CS"
+        },
+        "0020000D": {
+            "Value": [
+                "1.2.392.200140.2.1.1.1.2.799008771.3960.1519719403.819"
+            ],
+            "vr": "UI"
+        },
+        "0020000E": {
+            "Value": [
+                "2.25.760248445600673785066695533406198953749"
+            ],
+            "vr": "UI"
+        },
+        "00200010": {
+            "Value": [
+                "SID_1"
+            ],
+            "vr": "SH"
+        },
+        "00200011": {
+            "Value": [
+                99
+            ],
+            "vr": "IS"
+        },
+        "00200013": {
+            "Value": [
+                1
+            ],
+            "vr": "IS"
+        },
+        "00204000": {
+            "Value": [
+                "NOT FOR CLINICAL USE"
+            ],
+            "vr": "LT"
+        },
+        "0040A040": {
+            "Value": [
+                "CONTAINER"
+            ],
+            "vr": "CS"
+        },
+        "0040A043": {
+            "Value": [
+                {
+                    "00080100": {
+                        "Value": [
+                            "126000"
+                        ],
+                        "vr": "SH"
+                    },
+                    "00080102": {
+                        "Value": [
+                            "DCM"
+                        ],
+                        "vr": "SH"
+                    },
+                    "00080104": {
+                        "Value": [
+                            "Imaging Measurement Report"
+                        ],
+                        "vr": "LO"
+                    }
+                }
+            ],
+            "vr": "SQ"
+        },
+        "0040A050": {
+            "Value": [
+                "SEPARATE"
+            ],
+            "vr": "CS"
+        },
+        "0040A372": {
+            "vr": "SQ"
+        },
+        "0040A375": {
+            "Value": [
+                {
+                    "00081115": {
+                        "Value": [
+                            {
+                                "00081199": {
+                                    "Value": [
+                                        {
+                                            "00081150": {
+                                                "Value": [
+                                                    "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081155": {
+                                                "Value": [
+                                                    "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081160": {
+                                                "Value": [
+                                                    1
+                                                ],
+                                                "vr": "IS"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0020000E": {
+                                    "Value": [
+                                        "1.2.392.200140.2.1.1.1.3.799008771.3960.1519719403.820"
+                                    ],
+                                    "vr": "UI"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0020000D": {
+                        "Value": [
+                            "1.2.392.200140.2.1.1.1.2.799008771.3960.1519719403.819"
+                        ],
+                        "vr": "UI"
+                    }
+                },
+                {
+                    "00081115": {
+                        "Value": [
+                            {
+                                "00081199": {
+                                    "Value": [
+                                        {
+                                            "00081150": {
+                                                "Value": [
+                                                    "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081155": {
+                                                "Value": [
+                                                    "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081160": {
+                                                "Value": [
+                                                    1
+                                                ],
+                                                "vr": "IS"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0020000E": {
+                                    "Value": [
+                                        "1.2.392.200140.2.1.1.1.3.799008771.3960.1519719403.820"
+                                    ],
+                                    "vr": "UI"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0020000D": {
+                        "Value": [
+                            "1.2.392.200140.2.1.1.1.2.799008771.3960.1519719403.819"
+                        ],
+                        "vr": "UI"
+                    }
+                },
+                {
+                    "00081115": {
+                        "Value": [
+                            {
+                                "00081199": {
+                                    "Value": [
+                                        {
+                                            "00081150": {
+                                                "Value": [
+                                                    "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081155": {
+                                                "Value": [
+                                                    "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081160": {
+                                                "Value": [
+                                                    1
+                                                ],
+                                                "vr": "IS"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0020000E": {
+                                    "Value": [
+                                        "1.2.392.200140.2.1.1.1.3.799008771.3960.1519719403.820"
+                                    ],
+                                    "vr": "UI"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0020000D": {
+                        "Value": [
+                            "1.2.392.200140.2.1.1.1.2.799008771.3960.1519719403.819"
+                        ],
+                        "vr": "UI"
+                    }
+                },
+                {
+                    "00081115": {
+                        "Value": [
+                            {
+                                "00081199": {
+                                    "Value": [
+                                        {
+                                            "00081150": {
+                                                "Value": [
+                                                    "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081155": {
+                                                "Value": [
+                                                    "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                ],
+                                                "vr": "UI"
+                                            },
+                                            "00081160": {
+                                                "Value": [
+                                                    1
+                                                ],
+                                                "vr": "IS"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0020000E": {
+                                    "Value": [
+                                        "1.2.392.200140.2.1.1.1.3.799008771.3960.1519719403.820"
+                                    ],
+                                    "vr": "UI"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0020000D": {
+                        "Value": [
+                            "1.2.392.200140.2.1.1.1.2.799008771.3960.1519719403.819"
+                        ],
+                        "vr": "UI"
+                    }
+                }
+            ],
+            "vr": "SQ"
+        },
+        "0040A491": {
+            "Value": [
+                "COMPLETE"
+            ],
+            "vr": "CS"
+        },
+        "0040A493": {
+            "Value": [
+                "UNVERIFIED"
+            ],
+            "vr": "CS"
+        },
+        "0040A504": {
+            "Value": [
+                {
+                    "00080105": {
+                        "Value": [
+                            "DCMR"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040DB00": {
+                        "Value": [
+                            "1500"
+                        ],
+                        "vr": "CS"
+                    }
+                }
+            ],
+            "vr": "SQ"
+        },
+        "0040A730": {
+            "Value": [
+                {
+                    "0040A010": {
+                        "Value": [
+                            "HAS CONCEPT MOD"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A040": {
+                        "Value": [
+                            "CODE"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A043": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "121049"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "DCM"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Language of Content Item and Descendants"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A168": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "eng"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "RFC3066"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "English"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A730": {
+                        "Value": [
+                            {
+                                "0040A010": {
+                                    "Value": [
+                                        "HAS CONCEPT MOD"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A040": {
+                                    "Value": [
+                                        "CODE"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A043": {
+                                    "Value": [
+                                        {
+                                            "00080100": {
+                                                "Value": [
+                                                    "121046"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080102": {
+                                                "Value": [
+                                                    "DCM"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080104": {
+                                                "Value": [
+                                                    "Country of Language"
+                                                ],
+                                                "vr": "LO"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0040A168": {
+                                    "Value": [
+                                        {
+                                            "00080100": {
+                                                "Value": [
+                                                    "US"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080102": {
+                                                "Value": [
+                                                    "ISO3166_1"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080104": {
+                                                "Value": [
+                                                    "United States"
+                                                ],
+                                                "vr": "LO"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    }
+                },
+                {
+                    "0040A010": {
+                        "Value": [
+                            "HAS OBS CONTEXT"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A040": {
+                        "Value": [
+                            "PNAME"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A043": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "121008"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "DCM"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Person Observer Name"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A123": {
+                        "Value": [
+                            {
+                                "Alphabetic": "unknown^unknown"
+                            }
+                        ],
+                        "vr": "PN"
+                    }
+                },
+                {
+                    "0040A010": {
+                        "Value": [
+                            "HAS OBS CONTEXT"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A040": {
+                        "Value": [
+                            "TEXT"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A043": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "RP-100006"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "99dcmjs"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Person Observer's Login Name"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A160": {
+                        "Value": [
+                            "user"
+                        ],
+                        "vr": "UT"
+                    }
+                },
+                {
+                    "0040A010": {
+                        "Value": [
+                            "HAS CONCEPT MOD"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A040": {
+                        "Value": [
+                            "CODE"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A043": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "121058"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "DCM"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Procedure reported"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A168": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "1"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "99dcmjs"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Unknown procedure"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    }
+                },
+                {
+                    "0040A010": {
+                        "Value": [
+                            "CONTAINS"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A040": {
+                        "Value": [
+                            "CONTAINER"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A043": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "111028"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "DCM"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Image Library"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A050": {
+                        "Value": [
+                            "SEPARATE"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A730": {
+                        "Value": [
+                            {
+                                "0040A010": {
+                                    "Value": [
+                                        "CONTAINS"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A040": {
+                                    "Value": [
+                                        "CONTAINER"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A043": {
+                                    "Value": [
+                                        {
+                                            "00080100": {
+                                                "Value": [
+                                                    "126200"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080102": {
+                                                "Value": [
+                                                    "DCM"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080104": {
+                                                "Value": [
+                                                    "Image Library Group"
+                                                ],
+                                                "vr": "LO"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0040A050": {
+                                    "Value": [
+                                        "SEPARATE"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A730": {
+                                    "Value": [
+                                        {
+                                            "00081199": {
+                                                "Value": [
+                                                    {
+                                                        "00081150": {
+                                                            "Value": [
+                                                                "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081155": {
+                                                            "Value": [
+                                                                "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081160": {
+                                                            "Value": [
+                                                                1
+                                                            ],
+                                                            "vr": "IS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "IMAGE"
+                                                ],
+                                                "vr": "CS"
+                                            }
+                                        },
+                                        {
+                                            "00081199": {
+                                                "Value": [
+                                                    {
+                                                        "00081150": {
+                                                            "Value": [
+                                                                "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081155": {
+                                                            "Value": [
+                                                                "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081160": {
+                                                            "Value": [
+                                                                1
+                                                            ],
+                                                            "vr": "IS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "IMAGE"
+                                                ],
+                                                "vr": "CS"
+                                            }
+                                        },
+                                        {
+                                            "00081199": {
+                                                "Value": [
+                                                    {
+                                                        "00081150": {
+                                                            "Value": [
+                                                                "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081155": {
+                                                            "Value": [
+                                                                "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081160": {
+                                                            "Value": [
+                                                                1
+                                                            ],
+                                                            "vr": "IS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "IMAGE"
+                                                ],
+                                                "vr": "CS"
+                                            }
+                                        },
+                                        {
+                                            "00081199": {
+                                                "Value": [
+                                                    {
+                                                        "00081150": {
+                                                            "Value": [
+                                                                "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081155": {
+                                                            "Value": [
+                                                                "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                            ],
+                                                            "vr": "UI"
+                                                        },
+                                                        "00081160": {
+                                                            "Value": [
+                                                                1
+                                                            ],
+                                                            "vr": "IS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "IMAGE"
+                                                ],
+                                                "vr": "CS"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    }
+                },
+                {
+                    "0040A010": {
+                        "Value": [
+                            "CONTAINS"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A040": {
+                        "Value": [
+                            "CONTAINER"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A043": {
+                        "Value": [
+                            {
+                                "00080100": {
+                                    "Value": [
+                                        "126010"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080102": {
+                                    "Value": [
+                                        "DCM"
+                                    ],
+                                    "vr": "SH"
+                                },
+                                "00080104": {
+                                    "Value": [
+                                        "Imaging Measurements"
+                                    ],
+                                    "vr": "LO"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    },
+                    "0040A050": {
+                        "Value": [
+                            "SEPARATE"
+                        ],
+                        "vr": "CS"
+                    },
+                    "0040A730": {
+                        "Value": [
+                            {
+                                "0040A010": {
+                                    "Value": [
+                                        "CONTAINS"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A040": {
+                                    "Value": [
+                                        "CONTAINER"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A043": {
+                                    "Value": [
+                                        {
+                                            "00080100": {
+                                                "Value": [
+                                                    "125007"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080102": {
+                                                "Value": [
+                                                    "DCM"
+                                                ],
+                                                "vr": "SH"
+                                            },
+                                            "00080104": {
+                                                "Value": [
+                                                    "Measurement Group"
+                                                ],
+                                                "vr": "LO"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                },
+                                "0040A050": {
+                                    "Value": [
+                                        "SEPARATE"
+                                    ],
+                                    "vr": "CS"
+                                },
+                                "0040A730": {
+                                    "Value": [
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "TEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112039"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A160": {
+                                                "Value": [
+                                                    "web annotation"
+                                                ],
+                                                "vr": "UT"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "UIDREF"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112040"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Unique Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A124": {
+                                                "Value": [
+                                                    "2.25.265018118415266484714730522566712406100"
+                                                ],
+                                                "vr": "UI"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "CODE"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "121071"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A168": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "SAMPLEFINDING"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "99dcmjs"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Sample Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "NUM"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "G-D7FE"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "SRT"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Length"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A300": {
+                                                "Value": [
+                                                    {
+                                                        "004008EA": {
+                                                            "Value": [
+                                                                {
+                                                                    "00080100": {
+                                                                        "Value": [
+                                                                            "mm"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080102": {
+                                                                        "Value": [
+                                                                            "UCUM"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080103": {
+                                                                        "Value": [
+                                                                            "1.4"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080104": {
+                                                                        "Value": [
+                                                                            "millimeter"
+                                                                        ],
+                                                                        "vr": "LO"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "0040A30A": {
+                                                            "Value": [
+                                                                1619.07076171854
+                                                            ],
+                                                            "vr": "DS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A730": {
+                                                "Value": [
+                                                    {
+                                                        "0040A010": {
+                                                            "Value": [
+                                                                "INFERRED FROM"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A040": {
+                                                            "Value": [
+                                                                "SCOORD"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A730": {
+                                                            "Value": [
+                                                                {
+                                                                    "00081199": {
+                                                                        "Value": [
+                                                                            {
+                                                                                "00081150": {
+                                                                                    "Value": [
+                                                                                        "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081155": {
+                                                                                    "Value": [
+                                                                                        "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081160": {
+                                                                                    "Value": [
+                                                                                        1
+                                                                                    ],
+                                                                                    "vr": "IS"
+                                                                                }
+                                                                            }
+                                                                        ],
+                                                                        "vr": "SQ"
+                                                                    },
+                                                                    "0040A010": {
+                                                                        "Value": [
+                                                                            "SELECTED FROM"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    },
+                                                                    "0040A040": {
+                                                                        "Value": [
+                                                                            "IMAGE"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "00700022": {
+                                                            "Value": [
+                                                                723.4083251953125,
+                                                                167.55169677734375,
+                                                                1733.212646484375,
+                                                                1433.1287841796875
+                                                            ],
+                                                            "vr": "FL"
+                                                        },
+                                                        "00700023": {
+                                                            "Value": [
+                                                                "POLYLINE"
+                                                            ],
+                                                            "vr": "CS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "TEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112039"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A160": {
+                                                "Value": [
+                                                    "web annotation"
+                                                ],
+                                                "vr": "UT"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "UIDREF"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112040"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Unique Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A124": {
+                                                "Value": [
+                                                    "2.25.749199779589587497653065240744971968493"
+                                                ],
+                                                "vr": "UI"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "CODE"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "121071"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A168": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "SAMPLEFINDING"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "99dcmjs"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Sample Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "NUM"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "G-D7FE"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "SRT"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Length"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A300": {
+                                                "Value": [
+                                                    {
+                                                        "004008EA": {
+                                                            "Value": [
+                                                                {
+                                                                    "00080100": {
+                                                                        "Value": [
+                                                                            "mm"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080102": {
+                                                                        "Value": [
+                                                                            "UCUM"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080103": {
+                                                                        "Value": [
+                                                                            "1.4"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080104": {
+                                                                        "Value": [
+                                                                            "millimeter"
+                                                                        ],
+                                                                        "vr": "LO"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "0040A30A": {
+                                                            "Value": [
+                                                                1628.33981011694
+                                                            ],
+                                                            "vr": "DS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A730": {
+                                                "Value": [
+                                                    {
+                                                        "0040A010": {
+                                                            "Value": [
+                                                                "INFERRED FROM"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A040": {
+                                                            "Value": [
+                                                                "SCOORD"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A730": {
+                                                            "Value": [
+                                                                {
+                                                                    "00081199": {
+                                                                        "Value": [
+                                                                            {
+                                                                                "00081150": {
+                                                                                    "Value": [
+                                                                                        "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081155": {
+                                                                                    "Value": [
+                                                                                        "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081160": {
+                                                                                    "Value": [
+                                                                                        1
+                                                                                    ],
+                                                                                    "vr": "IS"
+                                                                                }
+                                                                            }
+                                                                        ],
+                                                                        "vr": "SQ"
+                                                                    },
+                                                                    "0040A010": {
+                                                                        "Value": [
+                                                                            "SELECTED FROM"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    },
+                                                                    "0040A040": {
+                                                                        "Value": [
+                                                                            "IMAGE"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "00700022": {
+                                                            "Value": [
+                                                                1387.7288818359375,
+                                                                591.2670288085938,
+                                                                205.19485473632812,
+                                                                1710.688232421875
+                                                            ],
+                                                            "vr": "FL"
+                                                        },
+                                                        "00700023": {
+                                                            "Value": [
+                                                                "POLYLINE"
+                                                            ],
+                                                            "vr": "CS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "TEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112039"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A160": {
+                                                "Value": [
+                                                    "web annotation"
+                                                ],
+                                                "vr": "UT"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "UIDREF"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112040"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Unique Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A124": {
+                                                "Value": [
+                                                    "2.25.273257253027930002378570710723113466986"
+                                                ],
+                                                "vr": "UI"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "CODE"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "121071"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A168": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "SAMPLEFINDING"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "99dcmjs"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Sample Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "NUM"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "G-D7FE"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "SRT"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Length"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A300": {
+                                                "Value": [
+                                                    {
+                                                        "004008EA": {
+                                                            "Value": [
+                                                                {
+                                                                    "00080100": {
+                                                                        "Value": [
+                                                                            "mm"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080102": {
+                                                                        "Value": [
+                                                                            "UCUM"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080103": {
+                                                                        "Value": [
+                                                                            "1.4"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080104": {
+                                                                        "Value": [
+                                                                            "millimeter"
+                                                                        ],
+                                                                        "vr": "LO"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "0040A30A": {
+                                                            "Value": [
+                                                                1361.9071310116
+                                                            ],
+                                                            "vr": "DS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A730": {
+                                                "Value": [
+                                                    {
+                                                        "0040A010": {
+                                                            "Value": [
+                                                                "INFERRED FROM"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A040": {
+                                                            "Value": [
+                                                                "SCOORD"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A730": {
+                                                            "Value": [
+                                                                {
+                                                                    "00081199": {
+                                                                        "Value": [
+                                                                            {
+                                                                                "00081150": {
+                                                                                    "Value": [
+                                                                                        "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081155": {
+                                                                                    "Value": [
+                                                                                        "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081160": {
+                                                                                    "Value": [
+                                                                                        1
+                                                                                    ],
+                                                                                    "vr": "IS"
+                                                                                }
+                                                                            }
+                                                                        ],
+                                                                        "vr": "SQ"
+                                                                    },
+                                                                    "0040A010": {
+                                                                        "Value": [
+                                                                            "SELECTED FROM"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    },
+                                                                    "0040A040": {
+                                                                        "Value": [
+                                                                            "IMAGE"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "00700022": {
+                                                            "Value": [
+                                                                185.26451110839844,
+                                                                1076.23876953125,
+                                                                1547.171630859375,
+                                                                1076.23876953125
+                                                            ],
+                                                            "vr": "FL"
+                                                        },
+                                                        "00700023": {
+                                                            "Value": [
+                                                                "POLYLINE"
+                                                            ],
+                                                            "vr": "CS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "TEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112039"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A160": {
+                                                "Value": [
+                                                    "web annotation"
+                                                ],
+                                                "vr": "UT"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "HAS OBS CONTEXT"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "UIDREF"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "112040"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Tracking Unique Identifier"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A124": {
+                                                "Value": [
+                                                    "2.25.235278236601824189152971031760718828290"
+                                                ],
+                                                "vr": "UI"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "CODE"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "121071"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "DCM"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A168": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "SAMPLEFINDING"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "99dcmjs"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Sample Finding"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        },
+                                        {
+                                            "0040A010": {
+                                                "Value": [
+                                                    "CONTAINS"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A040": {
+                                                "Value": [
+                                                    "NUM"
+                                                ],
+                                                "vr": "CS"
+                                            },
+                                            "0040A043": {
+                                                "Value": [
+                                                    {
+                                                        "00080100": {
+                                                            "Value": [
+                                                                "G-D7FE"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080102": {
+                                                            "Value": [
+                                                                "SRT"
+                                                            ],
+                                                            "vr": "SH"
+                                                        },
+                                                        "00080104": {
+                                                            "Value": [
+                                                                "Length"
+                                                            ],
+                                                            "vr": "LO"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A300": {
+                                                "Value": [
+                                                    {
+                                                        "004008EA": {
+                                                            "Value": [
+                                                                {
+                                                                    "00080100": {
+                                                                        "Value": [
+                                                                            "mm"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080102": {
+                                                                        "Value": [
+                                                                            "UCUM"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080103": {
+                                                                        "Value": [
+                                                                            "1.4"
+                                                                        ],
+                                                                        "vr": "SH"
+                                                                    },
+                                                                    "00080104": {
+                                                                        "Value": [
+                                                                            "millimeter"
+                                                                        ],
+                                                                        "vr": "LO"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "0040A30A": {
+                                                            "Value": [
+                                                                1231.06447747145
+                                                            ],
+                                                            "vr": "DS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            },
+                                            "0040A730": {
+                                                "Value": [
+                                                    {
+                                                        "0040A010": {
+                                                            "Value": [
+                                                                "INFERRED FROM"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A040": {
+                                                            "Value": [
+                                                                "SCOORD"
+                                                            ],
+                                                            "vr": "CS"
+                                                        },
+                                                        "0040A730": {
+                                                            "Value": [
+                                                                {
+                                                                    "00081199": {
+                                                                        "Value": [
+                                                                            {
+                                                                                "00081150": {
+                                                                                    "Value": [
+                                                                                        "1.2.840.10008.5.1.4.1.1.77.1.6"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081155": {
+                                                                                    "Value": [
+                                                                                        "1.2.392.200140.2.1.1.1.4.799008771.3960.1519719403.821"
+                                                                                    ],
+                                                                                    "vr": "UI"
+                                                                                },
+                                                                                "00081160": {
+                                                                                    "Value": [
+                                                                                        1
+                                                                                    ],
+                                                                                    "vr": "IS"
+                                                                                }
+                                                                            }
+                                                                        ],
+                                                                        "vr": "SQ"
+                                                                    },
+                                                                    "0040A010": {
+                                                                        "Value": [
+                                                                            "SELECTED FROM"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    },
+                                                                    "0040A040": {
+                                                                        "Value": [
+                                                                            "IMAGE"
+                                                                        ],
+                                                                        "vr": "CS"
+                                                                    }
+                                                                }
+                                                            ],
+                                                            "vr": "SQ"
+                                                        },
+                                                        "00700022": {
+                                                            "Value": [
+                                                                721.170654296875,
+                                                                372.0475158691406,
+                                                                1409.02587890625,
+                                                                1393.01513671875
+                                                            ],
+                                                            "vr": "FL"
+                                                        },
+                                                        "00700023": {
+                                                            "Value": [
+                                                                "POLYLINE"
+                                                            ],
+                                                            "vr": "CS"
+                                                        }
+                                                    }
+                                                ],
+                                                "vr": "SQ"
+                                            }
+                                        }
+                                    ],
+                                    "vr": "SQ"
+                                }
+                            }
+                        ],
+                        "vr": "SQ"
+                    }
+                }
+            ],
+            "vr": "SQ"
+        }
+    }
+]"""
     return contentType, responseBody
 
 
@@ -1372,11 +3755,12 @@ class SlicerHTTPServer(HTTPServer):
         self.logMessage('Parsing url request: ', parsedURL)
         self.logMessage(' request is: %s' % request)
         route = pathParts[0]
-        if route == b'/slicer':
+        if route.startswith(b'/slicer'):
           request = request[len(b'/slicer'):]
           self.logMessage(' request is: %s' % request)
           contentType, responseBody = self.slicerRequestHandler.handleSlicerRequest(request, requestBody)
-        elif route == '/dicom':
+        elif route.startswith(b'/dicom'):
+          self.logMessage(' dicom request is: %s' % request)
           contentType, responseBody = self.dicomRequestHandler.handleDICOMRequest(parsedURL, requestBody)
         else:
           contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)

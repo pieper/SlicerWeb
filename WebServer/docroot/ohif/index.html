@@ -61,53 +61,80 @@
           }
       };
 
+      const slicerConfig = {
+        routerBasename: "/ohif",
+        rootUrl: "http://localhost:2016/ohif",
+        servers: {
+          "dicomWeb": [
+            {
+              "name": "Slicer",
+              "wadoUriRoot": "http://localhost:2016/dicom",
+              "qidoRoot": "http://localhost:2016/dicom",
+              "wadoRoot": "http://localhost:2016/dicom",
+              "qidoSupportsIncludeField": true,
+              "imageRendering": "wadors",
+              "thumbnailRendering": "wadors",
+              "requestOptions": {
+                  "requestFromBrowser": true
+              }
+            },
+          ]
+        }
+      };
+
+      const dicomweb_serverConfig = {
+        routerBasename: "/ohif",
+        rootUrl: "http://localhost:2016/ohif",
+        servers: {
+          "dicomWeb": [
+            {
+              "name": "dicomweb_server",
+              "wadoUriRoot": "http://localhost:5985",
+              "qidoRoot": "http://localhost:5985",
+              "wadoRoot": "http://localhost:5985",
+              "qidoSupportsIncludeField": true,
+              "imageRendering": "wadouri",
+              "thumbnailRendering": "wadors",
+              "requestOptions": {
+                  "requestFromBrowser": true
+              }
+            },
+          ]
+        }
+      };
+
+      const dcmjsServerConfig = {
+        routerBasename: "/demo",
+        servers: {
+          "dicomWeb": [
+            {
+              "name": "DCM4CHEE",
+              "wadoUriRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/wado",
+              "qidoRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs",
+              "wadoRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs",
+              "qidoSupportsIncludeField": true,
+              "imageRendering": "wadors",
+              "thumbnailRendering": "wadors",
+              "requestOptions": {
+                  "requestFromBrowser": true
+              }
+            },
+          ]
+        }
+      };
+
       window.process = process;
+      window.config = slicerConfig;
+      //window.config = dicomweb_serverConfig;
+      //window.config = dcmjsServerConfig;
+
     </script>
 
-    <script src="https://unpkg.com/ohif-viewer/dist/index.umd.js" crossorigin></script>
-
+    <!-- <script src="https://unpkg.com/ohif-viewer/dist/index.umd.js" crossorigin></script> -->
+	  <script src="https://unpkg.com/ohif-viewer@0.1.9/dist/index.umd.js" crossorigin></script>
     <script>
-        var props = {
-          routerBasename: "/ohif",
-          rootUrl: "http://localhost:2016/ohif"
-        };
-/*
-        props.servers = {
-            "dicomWeb": [
-                {
-                    "name": "DCM4CHEE",
-                    "wadoUriRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/wado",
-                    "qidoRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs",
-                    "wadoRoot": "https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs",
-                    "qidoSupportsIncludeField": true,
-                    "imageRendering": "wadors",
-                    "thumbnailRendering": "wadors",
-                    "requestOptions": {
-                        "requestFromBrowser": true
-                    }
-                }
-            ]
-        };
-*/
-        props.servers = {
-            "dicomWeb": [
-                {
-                    "name": "Slicer",
-                    "wadoUriRoot": "http://localhost:2016/dicom",
-                    "qidoRoot": "http://localhost:2016/dicom",
-                    "wadoRoot": "http://localhost:2016/dicom",
-                    "qidoSupportsIncludeField": true,
-                    "imageRendering": "wadors",
-                    "thumbnailRendering": "wadors",
-                    "requestOptions": {
-                        "requestFromBrowser": true
-                    }
-                }
-            ]
-        };
 
-
-        var viewerApp = React.createElement(window.OHIFStandaloneViewer.App, props, null);
+        var viewerApp = React.createElement(window.OHIFStandaloneViewer.App, window.config, null);
         ReactDOM.render(viewerApp, document.getElementById('root'));
 
     </script>
