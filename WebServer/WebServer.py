@@ -604,7 +604,7 @@ class SlicerRequestHandler(object):
     p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
-    alpha,beta,gamma = map(float,q['angles'][0].split(','))
+    alpha,beta,gamma = list(map(float,q['angles'][0].split(',')))
 
     self.setupMRMLTracking()
     transform = vtk.vtkTransform()
@@ -619,7 +619,7 @@ class SlicerRequestHandler(object):
     p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
-    transformMatrix = map(float,q['m'][0].split(','))
+    transformMatrix = list(map(float,q['m'][0].split(',')))
 
     self.setupMRMLTracking()
     m = self.tracker.GetMatrixTransformToParent()
@@ -673,6 +673,7 @@ class SlicerRequestHandler(object):
   def volumes(self, request, requestBody):
     volumes = []
     mrmlVolumes = slicer.util.getNodes('vtkMRMLScalarVolumeNode*')
+    mrmlVolumes.update(slicer.util.getNodes('vtkMRMLLabelMapVolumeNode*'))
     for id_ in mrmlVolumes.keys():
       volumeNode = mrmlVolumes[id_]
       volumes.append({"name": volumeNode.GetName(), "id": volumeNode.GetID()})
@@ -708,50 +709,50 @@ class SlicerRequestHandler(object):
     """Convert a binary blob of nrrd data into a node in the scene.
     Overwrite volumeID if it exists, otherwise create new"""
 
-    if requestBody[:4] != "NRRD":
+    if requestBody[:4] != b"NRRD":
       self.logMessage('Cannot load non-nrrd file (magic is %s)' % requestBody[:4])
       return
 
     fields = {}
-    endOfHeader = requestBody.find('\n\n') #TODO: could be \r\n
+    endOfHeader = requestBody.find(b'\n\n') #TODO: could be \r\n
     header = requestBody[:endOfHeader]
     self.logMessage(header)
-    for line in header.split('\n'):
-      colonIndex = line.find(':')
+    for line in header.split(b'\n'):
+      colonIndex = line.find(b':')
       if line[0] != '#' and colonIndex != -1:
         key = line[:colonIndex]
         value = line[colonIndex+2:]
         fields[key] = value
 
-    if fields['type'] != 'short':
+    if fields[b'type'] != b'short':
       self.logMessage('Can only read short volumes')
-      return "{'status': 'failed'}"
-    if fields['dimension'] != '3':
+      return b"{'status': 'failed'}"
+    if fields[b'dimension'] != b'3':
       self.logMessage('Can only read 3D, 1 component volumes')
-      return "{'status': 'failed'}"
-    if fields['endian'] != 'little':
+      return b"{'status': 'failed'}"
+    if fields[b'endian'] != b'little':
       self.logMessage('Can only read little endian')
-      return "{'status': 'failed'}"
-    if fields['encoding'] != 'raw':
+      return b"{'status': 'failed'}"
+    if fields[b'encoding'] != b'raw':
       self.logMessage('Can only read raw encoding')
-      return "{'status': 'failed'}"
-    if fields['space'] != 'left-posterior-superior':
+      return b"{'status': 'failed'}"
+    if fields[b'space'] != b'left-posterior-superior':
       self.logMessage('Can only read space in LPS')
-      return "{'status': 'failed'}"
+      return b"{'status': 'failed'}"
 
     imageData = vtk.vtkImageData()
-    imageData.SetDimensions(map(int,fields['sizes'].split(' ')))
+    imageData.SetDimensions(list(map(int,fields[b'sizes'].split(b' '))))
     imageData.AllocateScalars(vtk.VTK_SHORT, 1)
 
-    origin = map(float, fields['space origin'].replace('(','').replace(')','').split(','))
+    origin = list(map(float, fields[b'space origin'].replace(b'(',b'').replace(b')',b'').split(b',')))
     origin[0] *= -1
     origin[1] *= -1
 
     directions = []
-    directionParts = fields['space directions'].split(')')[:3]
+    directionParts = fields[b'space directions'].split(b')')[:3]
     for directionPart in directionParts:
-      part = directionPart.replace('(','').replace(')','').split(',')
-      directions.append(map(float, part))
+      part = directionPart.replace(b'(',b'').replace(b')',b'').split(b',')
+      directions.append(list(map(float, part)))
 
     ijkToRAS = vtk.vtkMatrix4x4()
     ijkToRAS.Identity()
@@ -763,7 +764,10 @@ class SlicerRequestHandler(object):
           element *= -1
         ijkToRAS.SetElement(row,column, element)
 
-    node = slicer.util.getNode(volumeID)
+    try:
+      node = slicer.util.getNode(volumeID)
+    except slicer.util.MRMLNodeNotFoundException:
+      node = None
     if not node:
       node = slicer.vtkMRMLScalarVolumeNode()
       node.SetName(volumeID)
@@ -783,7 +787,7 @@ class SlicerRequestHandler(object):
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveVolumeID(node.GetID())
     slicer.app.applicationLogic().PropagateVolumeSelection()
 
-    return "{'status': 'success'}"
+    return b"{'status': 'success'}"
 
   def getNRRD(self, volumeID):
     """Return a nrrd binary blob with contents of the volume node"""
@@ -806,7 +810,7 @@ class SlicerRequestHandler(object):
       volumeArray = numpy.array(volumeArray, dtype='int16')
 
     sizes = imageData.GetDimensions()
-    sizes = " ".join(map(str,sizes))
+    sizes = " ".join(list(map(str,sizes)))
 
     originList = [0,]*3
     directionLists = [[0,]*3,[0,]*3,[0,]*3]
@@ -821,10 +825,10 @@ class SlicerRequestHandler(object):
         directionLists[column][row] = element
     originList[0] *=-1
     originList[1] *=-1
-    origin = '('+','.join(map(str,originList))+')'
+    origin = '('+','.join(list(map(str,originList)))+')'
     directions = ""
     for directionList in directionLists:
-      direction = '('+','.join(map(str,directionList))+')'
+      direction = '('+','.join(list(map(str,directionList)))+')'
       directions += direction + " "
     directions = directions[:-1]
 
@@ -875,7 +879,7 @@ space origin: %%origin%%
     # TODO: generalize for any GridTransform node
 
     sizes = (3,) + imageData.GetDimensions()
-    sizes = " ".join(map(str,sizes))
+    sizes = " ".join(list(map(str,sizes)))
 
     spacing = list(imageData.GetSpacing())
     spacing[0] *= -1 # RAS to LPS
