@@ -133,11 +133,13 @@ def _data_element_to_json(data_element, element_handler):
     elif data_element.VR in _VRs_TO_QUOTE:
         # TODO: switch to " from ' - why doesn't json do this?
         value = ["%s" % data_element.value]
+    elif data_element.VR == "PN":
+        value = data_element.value
+        if value is not None:
+            value = [{ "Alphabetic" : value.original_string }]
     else:
         value = data_element.value
         if value is not None:
-            if isinstance(value, unicode):
-                value = value.encode('utf-8')
             value = [value]
     try:
         json_element = {
