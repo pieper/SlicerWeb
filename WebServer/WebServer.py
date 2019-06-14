@@ -327,13 +327,10 @@ class DICOMRequestHandler(object):
 
   def handleStudies(self, parsedURL, requestBody):
     contentType = b'application/json'
-    print("parsedURL.path: ", parsedURL.path)
     splitPath = parsedURL.path.split(b'/')
     responseBody = b"[{}]"
-    print('handle studies', parsedURL, splitPath)
     if len(splitPath) == 3:
       # studies qido search
-      print('looking for studies')
       representativeSeries = None
       studyResponseString = b"["
       for patient in slicer.dicomDatabase.patients():
@@ -348,7 +345,7 @@ class DICOMRequestHandler(object):
             if len(seriesInstances) > 0:
               representativeSeries = serie
               try:
-                dataset = pydicom.read_file(slicer.dicomDatabase.fileForInstance(seriesInstances[0]))
+                dataset = pydicom.dcmread(slicer.dicomDatabase.fileForInstance(seriesInstances[0]), stop_before_pixels=True)
                 modalitiesInStudy.add(dataset.Modality)
               except AttributeError as e:
                 print('Could not get instance information for %s' % seriesInstances[0])
@@ -358,7 +355,7 @@ class DICOMRequestHandler(object):
             continue
           instances = slicer.dicomDatabase.instancesForSeries(representativeSeries)
           firstInstance = instances[0]
-          dataset = pydicom.read_file(slicer.dicomDatabase.fileForInstance(firstInstance))
+          dataset = pydicom.dcmread(slicer.dicomDatabase.fileForInstance(firstInstance), stop_before_pixels=True)
           studyDataset = pydicom.dataset.Dataset()
           studyDataset.SpecificCharacterSet =  [u'ISO_IR 100']
           studyDataset.StudyDate = dataset.StudyDate
@@ -380,9 +377,7 @@ class DICOMRequestHandler(object):
               self.numberOfStudyRelatedSeriesTag, "IS", str(numberOfStudyRelatedSeries))
           studyDataset[self.numberOfStudyRelatedInstancesTag] = pydicom.dataelem.DataElement(
               self.numberOfStudyRelatedInstancesTag, "IS", str(numberOfStudyRelatedInstances))
-          print(studyDataset)
           jsonDataset = studyDataset.to_json(studyDataset)
-          print(jsonDataset)
           studyResponseString += jsonDataset.encode() + b","
       if studyResponseString.endswith(b','):
         studyResponseString = studyResponseString[:-1]
@@ -397,7 +392,7 @@ class DICOMRequestHandler(object):
       for serie in series:
         seriesInstances = slicer.dicomDatabase.instancesForSeries(serie)
         for instance in seriesInstances:
-          dataset = pydicom.read_file(slicer.dicomDatabase.fileForInstance(instance))
+          dataset = pydicom.dcmread(slicer.dicomDatabase.fileForInstance(instance), stop_before_pixels=True)
           jsonDataset = dataset.to_json()
           responseBody += jsonDataset.encode() + b","
       if responseBody.endswith(b','):
@@ -407,7 +402,6 @@ class DICOMRequestHandler(object):
 
   def handleWADOURI(self, parsedURL, requestBody):
     q = urlparse.parse_qs(parsedURL.query)
-    print(q)
     try:
       instanceUID = q[b'objectUID'][0].decode().strip()
     except KeyError:
@@ -1056,7 +1050,6 @@ space origin: %%origin%%
 
     p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
-    print(p,q)
     try:
       view = q['view'][0].strip().lower()
     except KeyError:
