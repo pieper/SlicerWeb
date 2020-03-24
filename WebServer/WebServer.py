@@ -129,10 +129,10 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('http://localhost:2016'))
 
     # open step demo in widget
-    self.localQtConnectionButton = qt.QPushButton("Open Slicer WebWidget Page")
+    self.localQtConnectionButton = qt.QPushButton("Open STEP in WebWidget")
     self.localQtConnectionButton.toolTip = "Open a connection with Qt to the server on the local machine."
     self.layout.addWidget(self.localQtConnectionButton)
-    self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('https://pieper.github.io/sites/step'))
+    self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('http://pieper.github.io/step'))
 
     # qiicr chart button
     self.qiicrChartButton = qt.QPushButton("Open QIICR Chart Demo")
