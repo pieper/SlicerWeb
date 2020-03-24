@@ -1,4 +1,4 @@
-import dicom
+import pydicom
 import json
 import six
 
