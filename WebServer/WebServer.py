@@ -268,22 +268,22 @@ class StaticRequestHandler(object):
     responseBody = None
     if uri.startswith(b'/'):
       uri = uri[1:]
-    path = os.path.join(self.docroot,uri.decode())
+    path = os.path.join(self.docroot,uri)
     self.logMessage('docroot: %s' % self.docroot)
     if os.path.isdir(path):
-      for index in "index.html", "index.htm":
+      for index in b"index.html", b"index.htm":
         index = os.path.join(path, index)
         if os.path.exists(index):
           path = index
-    self.logMessage('Serving: %s' % path)
+    self.logMessage(b'Serving: %s' % path)
     if os.path.isdir(path):
       contentType = b"text/html"
       responseBody = b"<ul>"
       for entry in os.listdir(path):
         responseBody += b"<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
-      responseBody = b"</ul>"
+      responseBody += b"</ul>"
     else:
-      ext = os.path.splitext(path)[-1]
+      ext = os.path.splitext(path)[-1].decode()
       if ext in mimetypes.types_map:
         contentType = mimetypes.types_map[ext].encode()
       try:
@@ -1122,7 +1122,9 @@ space origin: %%origin%%
 
     imageData = sliceLogic.GetBlend().Update(0)
     imageData = sliceLogic.GetBlend().GetOutputDataObject(0)
-    pngData = self.vtkImageDataToPNG(imageData)
+    pngData = []
+    if imageData:
+        pngData = self.vtkImageDataToPNG(imageData)
     self.logMessage('returning an image of %d length' % len(pngData))
     return pngData
 
@@ -1542,8 +1544,8 @@ class WebServerLogic:
     self.server = None
     self.logFile = '/tmp/WebServerLogic.log'
 
-    moduleDirectory = os.path.dirname(slicer.modules.webserver.path)
-    self.docroot = moduleDirectory + "/docroot"
+    moduleDirectory = os.path.dirname(slicer.modules.webserver.path.encode())
+    self.docroot = moduleDirectory + b"/docroot"
 
   def getSceneBounds(self):
     # scene bounds
