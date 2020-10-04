@@ -819,8 +819,10 @@ class SlicerRequestHandler(object):
 
     imageData = volumeNode.GetImageData()
 
-    if imageData.GetScalarTypeAsString() != "short":
-      self.logMessage('Can only get volumes of type short')
+    supportedScalarTypes = ["short", "double"]
+    scalarType = imageData.GetScalarTypeAsString()
+    if scalarType not in supportedScalarTypes:
+      self.logMessage('Can only get volumes of types %s, not %s' % (str(supportedScalarTypes), scalarType))
       self.logMessage('Converting to short, but may cause data loss.')
       volumeArray = numpy.array(volumeArray, dtype='int16')
 
@@ -854,7 +856,7 @@ class SlicerRequestHandler(object):
     nrrdHeader = """NRRD0004
 # Complete NRRD file format specification at:
 # http://teem.sourceforge.net/nrrd/format.html
-type: short
+type: %%scalarType%%
 dimension: 3
 space: left-posterior-superior
 sizes: %%sizes%%
@@ -864,7 +866,7 @@ endian: little
 encoding: raw
 space origin: %%origin%%
 
-""".replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
+""".replace("%%scalarType%%", scalarType).replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
 
     nrrdData = nrrdHeader.encode() + volumeArray.tobytes()
     return nrrdData
