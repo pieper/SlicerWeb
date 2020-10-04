@@ -2,415 +2,38 @@ import os
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
+import pydicom
 import logging
 import random
 import sys
 import select
-import urlparse
-import urllib
-import json
+
 try:
-    import cStringIO as StringIO
+    import urlparse
 except ImportError:
-    import StringIO
+    import urllib
+    class urlparse(object):
+        urlparse = urllib.parse.urlparse
+        parse_qs = urllib.parse.parse_qs
+import json
 
 import string
 import time
 import socket
 import uuid
 
-from BaseHTTPServer import HTTPServer
+try:
+    from BaseHTTPServer import HTTPServer
+except ImportError:
+    from http.server import HTTPServer
+
 import mimetypes
 
 import numpy
 import vtk.util.numpy_support
 
-# Note: this needs to be installed in slicer's python
-# in order for any of the image operations to work
-hasImage = True
-try:
-  from PIL import Image
-except ImportError:
-  hasImage = False
-hasImage = False
-
-#
-# glTFExporter
-#
-
-import base64
-
-class glTFExporter:
-  """
-  Export a subset of mrml data to glTF format (https://www.khronos.org/gltf).
-
-  This could be factored to a separate module, but it's developed
-  here for simplicity of reloading and debugging.
-
-  This work was partially funded by NIH grant 3P41RR013218.
-  """
-  def __init__(self,mrmlScene):
-    self.mrmlScene = mrmlScene
-    self.sceneDefaults()
-
-  def export(self,nodeFilter=lambda node: True):
-    """
-    Returns a json document string in the format supported by glTF
-    and described here: https://github.com/KhronosGroup/glTF/blob/master/specification/1.0/README.md
-    some defaults and structure pulled from the Box sample at https://github.com/KhronosGroup/glTF-Sample-Models
-
-    nodeFilter is a callable that returns true if the node should be included in the export
-    """
-
-    # things specific to each model node
-    models = slicer.util.getNodes('vtkMRMLModelNode*')
-    for model in models.values():
-      if nodeFilter(model):
-        self.addModel(model)
-
-    # things specific to each fiber node
-    fibers = slicer.util.getNodes('vtkMRMLFiberBundleNode*')
-    for fiber in fibers.values():
-      if nodeFilter(fiber):
-        model = self.fiberToModel(fiber)
-        if model:
-          self.addModel(model)
-
-    return(json.dumps(self.glTF))
-
-  def sceneDefaults(self):
-    self.glTF = {
-      "scene": "defaultScene",
-      "scenes": {
-        "defaultScene": {
-          "nodes": []
-        }
-      },
-      "extensionsUsed": [
-        "KHR_materials_common"
-      ],
-      "asset": {
-        "generator": "SlicerWeb.glTFExporter",
-        "premultipliedAlpha": False,
-        "profile": {
-          "api": "WebGL",
-          "version": "1.0"
-        },
-        "version": "1.1"
-      },
-      # these are populated by addModel
-      "nodes": {},
-      "meshes": {},
-      "accessors": {},
-      "buffers": {},
-      "bufferViews": {},
-      "materials": {},
-    }
-    self.glTF["animations"] = {}
-    self.glTF["skins"] = {}
-    self.glTF["shaders"] = {
-        "FragmentShader": {
-            "type": 35632,
-            "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0Owp2YXJ5aW5nIHZlYzMgdl9ub3JtYWw7CnVuaWZvcm0gdmVjNCB1X2RpZmZ1c2U7CnVuaWZvcm0gdmVjNCB1X3NwZWN1bGFyOwp1bmlmb3JtIGZsb2F0IHVfc2hpbmluZXNzOwp2b2lkIG1haW4odm9pZCkgewp2ZWMzIG5vcm1hbCA9IG5vcm1hbGl6ZSh2X25vcm1hbCk7CnZlYzQgY29sb3IgPSB2ZWM0KDAuLCAwLiwgMC4sIDAuKTsKdmVjNCBkaWZmdXNlID0gdmVjNCgwLiwgMC4sIDAuLCAxLik7CnZlYzQgc3BlY3VsYXI7CmRpZmZ1c2UgPSB1X2RpZmZ1c2U7CnNwZWN1bGFyID0gdV9zcGVjdWxhcjsKZGlmZnVzZS54eXogKj0gbWF4KGRvdChub3JtYWwsdmVjMygwLiwwLiwxLikpLCAwLik7CmNvbG9yLnh5eiArPSBkaWZmdXNlLnh5ejsKY29sb3IgPSB2ZWM0KGNvbG9yLnJnYiAqIGRpZmZ1c2UuYSwgZGlmZnVzZS5hKTsKZ2xfRnJhZ0NvbG9yID0gY29sb3I7Cn0K"
-        },
-        "VertexShader": {
-            "type": 35633,
-            "uri": "data:text/plain;base64,cHJlY2lzaW9uIGhpZ2hwIGZsb2F0OwphdHRyaWJ1dGUgdmVjMyBhX3Bvc2l0aW9uOwphdHRyaWJ1dGUgdmVjMyBhX25vcm1hbDsKdmFyeWluZyB2ZWMzIHZfbm9ybWFsOwp1bmlmb3JtIG1hdDMgdV9ub3JtYWxNYXRyaXg7CnVuaWZvcm0gbWF0NCB1X21vZGVsVmlld01hdHJpeDsKdW5pZm9ybSBtYXQ0IHVfcHJvamVjdGlvbk1hdHJpeDsKdm9pZCBtYWluKHZvaWQpIHsKdmVjNCBwb3MgPSB1X21vZGVsVmlld01hdHJpeCAqIHZlYzQoYV9wb3NpdGlvbiwxLjApOwp2X25vcm1hbCA9IHVfbm9ybWFsTWF0cml4ICogYV9ub3JtYWw7CmdsX1Bvc2l0aW9uID0gdV9wcm9qZWN0aW9uTWF0cml4ICogcG9zOwp9Cg=="
-        }
-    }
-    self.glTF["techniques"] = {
-        "technique0": {
-            "attributes": {
-                "a_normal": "normal",
-                "a_position": "position"
-            },
-            "parameters": {
-                "diffuse": {
-                    "type": 35666
-                },
-                "modelViewMatrix": {
-                    "semantic": "MODELVIEW",
-                    "type": 35676
-                },
-                "normal": {
-                    "semantic": "NORMAL",
-                    "type": 35665
-                },
-                "normalMatrix": {
-                    "semantic": "MODELVIEWINVERSETRANSPOSE",
-                    "type": 35675
-                },
-                "position": {
-                    "semantic": "POSITION",
-                    "type": 35665
-                },
-                "projectionMatrix": {
-                    "semantic": "PROJECTION",
-                    "type": 35676
-                },
-                "shininess": {
-                    "type": 5126
-                },
-                "specular": {
-                    "type": 35666
-                }
-            },
-            "program": "program_0",
-            "states": {
-                "enable": [
-                    2929,
-                    2884
-                ]
-            },
-            "uniforms": {
-                "u_diffuse": "diffuse",
-                "u_modelViewMatrix": "modelViewMatrix",
-                "u_normalMatrix": "normalMatrix",
-                "u_projectionMatrix": "projectionMatrix",
-                "u_shininess": "shininess",
-                "u_specular": "specular"
-            }
-        }
-    }
-    self.glTF["programs"] = {
-        "program_0": {
-            "attributes": [
-                "a_normal",
-                "a_position"
-            ],
-            "fragmentShader": "FragmentShader",
-            "vertexShader": "VertexShader"
-        }
-    }
-
-  def addModel(self, model):
-    """Add a mrml model node as a glTF node"""
-    triangles = vtk.vtkTriangleFilter()
-    triangles.SetInputDataObject(model.GetPolyData())
-    triangles.Update()
-    polyData = triangles.GetOutput()
-    if not polyData.GetPoints():
-      print ('Skipping model with no points %s)' % model.GetName())
-      return
-    display = model.GetDisplayNode()
-    diffuseColor = [0.2, 0.6, 0.8]
-    visible = True
-    if display:
-      diffuseColor = list(display.GetColor())
-      visible = display.GetVisibility() == 1
-    else:
-      # hack for dealing with fiber bundles - see fiberToModel
-      color = model.GetAttribute('color')
-      if color:
-        diffuseColor = json.loads(color)
-      visible = model.GetAttribute('visibility') == '1'
-    if not visible:
-      print ('Skipping invisible model %s)' % model.GetName())
-      return
-    print ('Not skipping visible model %s)' % model.GetName())
-    modelID = model.GetID()
-    if modelID is None:
-      modelID = model.GetName()
-
-    if model.GetName().endswith('Volume Slice'):
-      print('skipping ', model.GetName())
-      return
-
-    self.glTF["nodes"][modelID] = {
-            "children": [],
-            "matrix": [ 1, 0, 0, 0,
-                        0, 1, 0, 0,
-                        0, 0, 1, 0,
-                        0, 0, 0, 1. ],
-            "meshes": [
-                "Mesh_"+modelID
-            ],
-            "name": "Mesh"
-        }
-    self.glTF["scenes"]["defaultScene"]["nodes"].append(modelID)
-    glTriangles = 4
-    self.glTF["meshes"]["Mesh_"+modelID] = {
-        "name": "Mesh_"+modelID,
-        "primitives": [
-            {
-                "attributes": {
-                    "NORMAL": "Accessor_Normal_"+modelID,
-                    "POSITION": "Accessor_Position_"+modelID
-                },
-                "indices": "Accessor_Indices_"+modelID,
-                "material": "Material_"+modelID,
-                "mode": glTriangles
-            }
-        ]
-    }
-    self.glTF["materials"]["Material_"+modelID] = {
-        "name": "Material_"+modelID,
-        "extensions": {
-            "KHR_materials_common": {
-                "doubleSided": False,
-                "technique": "PHONG",
-                "transparent": False,
-                "values": {
-                    "ambient": [ 0, 0, 0, 1 ],
-                    "diffuse": diffuseColor,
-                    "emission": [ 0, 0, 0, 1 ],
-                    "specular": [ 0.174994, 0.174994, 0.174994, 1 ]
-                }
-            }
-        },
-    }
-
-    #
-    # for the polyData, create a set of
-    # buffer, bufferView, and accessor
-    # for the position, normal, and triangle strip indices
-    #
-
-    # position
-    pointFloatArray = polyData.GetPoints().GetData()
-    pointNumpyArray = vtk.util.numpy_support.vtk_to_numpy(pointFloatArray) / 1000.  # convert to meters
-    base64PointArray = base64.b64encode(pointNumpyArray)
-    bounds = polyData.GetBounds()
-
-    self.glTF["buffers"]["Buffer_Position_"+modelID] = {
-        "byteLength": len(base64PointArray),
-        "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64PointArray,
-    }
-    self.glTF["bufferViews"]["BufferView_Position_"+modelID] = {
-        "buffer": "Buffer_Position_"+modelID,
-        "byteLength": len(base64PointArray),
-        "byteOffset": 0,
-        "target": 34962
-    }
-    self.glTF["accessors"]["Accessor_Position_"+modelID] = {
-        "bufferView": "BufferView_Position_"+modelID,
-        "byteOffset": 0,
-        "byteStride": 12,
-        "componentType": 5126,
-        "count": pointFloatArray.GetNumberOfTuples(),
-        "type": "VEC3",
-        "min": [bounds[0],bounds[2],bounds[4]],
-        "max": [bounds[1],bounds[3],bounds[5]]
-    }
-
-    # point
-    normalFloatArray = polyData.GetPointData().GetArray('Normals')
-    normalNumpyArray = vtk.util.numpy_support.vtk_to_numpy(normalFloatArray)
-    base64NormalArray = base64.b64encode(normalNumpyArray)
-
-    self.glTF["buffers"]["Buffer_Normal_"+modelID] = {
-        "byteLength": len(base64NormalArray),
-        "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64NormalArray,
-    }
-    self.glTF["bufferViews"]["BufferView_Normal_"+modelID] = {
-        "buffer": "Buffer_Normal_"+modelID,
-        "byteLength": len(base64NormalArray),
-        "byteOffset": 0,
-        "target": 34962
-    }
-    self.glTF["accessors"]["Accessor_Normal_"+modelID] = {
-        "bufferView": "BufferView_Normal_"+modelID,
-        "byteOffset": 0,
-        "byteStride": 12,
-        "componentType": 5126,
-        "min": [ -1., -1., -1. ],
-        "max": [ 1., 1., 1. ],
-        "count": normalFloatArray.GetNumberOfTuples(),
-        "type": "VEC3"
-    }
-
-    # indices for triangle strips
-    # (not finished because it turns out aframe's glTF loader
-    # only supports lines and triangles)
-    stripFolly = """
-    stripCount = polyData.GetNumberOfStrips()
-    stripIndices = polyData.GetStrips().GetData()
-    stripVTKIndices = vtk.util.numpy_support.vtk_to_numpy(stripIndices).astype('uint32')
-    stripGLIndices = numpy.zeros(stripCount+len(stripVTKIndices), dtype='uint32')
-
-    stripVTKIndex = 0
-    stripGLIndex = 0
-    while stripVTKIndex < len(stripVTKIndices):
-      stripSize = stripVTKIndices[stripVTKIndex]
-      stripGLIndices[stripGLIndex:stripGLIndex+stripSize] = stripVTKIndices[stripVTKIndex+1:stripVTKIndex+1+stripSize]
-      stripGLIndices[stripGLIndex+stripSize+1] = stripGLIndices[stripGLIndex+stripSize]
-      firstIndexNextStrip = stripVTKIndex + stripSize + 2
-      if firstIndexNextStrip < len(stripVTKIndices):
-        stripGLIndices[stripGLIndex+stripSize+2] = stripVTKIndices[firstIndexNextStrip]
-      stripVTKIndex += 1+stripSize
-      stripGLIndex += stripSize
-
-    print(stripVTKIndices)
-    print(stripGLIndices)
-
-    base64StripIndices = base64.b64encode(stripGLIndices)
-    """
-
-    # indices
-    triangleCount = polyData.GetNumberOfPolys()
-    triangleIndices = polyData.GetPolys().GetData()
-    triangleIndexNumpyArray = vtk.util.numpy_support.vtk_to_numpy(triangleIndices).astype('uint32')
-    # vtk stores the vertext count per triangle (so delete the 3 at every 4th entry)
-    triangleIndexNumpyArray = numpy.delete(triangleIndexNumpyArray, slice(None,None,4))
-    base64Indices = base64.b64encode(numpy.asarray(triangleIndexNumpyArray, order='C'))
-
-    self.glTF["buffers"]["Buffer_Indices_"+modelID] = {
-        "byteLength": len(base64PointArray),
-        "type": "arraybuffer",
-        "uri": "data:application/octet-stream;base64,"+base64Indices
-    }
-    self.glTF["bufferViews"]["BufferView_Indices_"+modelID] = {
-        "buffer": "Buffer_Indices_"+modelID,
-        "byteOffset": 0,
-        "byteLength": 4 * len(triangleIndexNumpyArray),
-        "target": 34963
-    }
-    self.glTF["accessors"]["Accessor_Indices_"+modelID] = {
-        "bufferView": "BufferView_Indices_"+modelID,
-        "byteOffset": 0,
-        "byteStride": 0,
-        "componentType": 5125,
-        "count": len(triangleIndexNumpyArray),
-        "type": "SCALAR"
-    }
-
-  def fiberToModel(self,fiber):
-    """Convert a vtkMRMLFiberBundleNode into a dummy vtkMRMLModelNode
-    so it can use the same converter.
-    Note: need to use attributes to send color since we cannot
-    add a display node to the dummy node since it is not in a scene.
-    """
-    tuber = vtk.vtkTubeFilter()
-    tuber.SetInputDataObject(fiber.GetPolyData())
-    tuber.Update()
-    polyData = tuber.GetOutput()
-    normalsArray = polyData.GetPointData().GetArray('TubeNormals')
-    if not normalsArray:
-      return None
-    normalsArray.SetName('Normals')
-    model = slicer.vtkMRMLModelNode()
-    model.SetName("ModelFrom_"+fiber.GetID())
-    model.SetAndObservePolyData(polyData)
-    tubeDisplay = fiber.GetTubeDisplayNode()
-    if tubeDisplay:
-      color = json.dumps(list(tubeDisplay.GetColor()))
-      model.SetAttribute("color", color)
-      model.SetAttribute("visibility", str(tubeDisplay.GetVisibility()))
-    return(model)
-
-    notes = """
-      # TODO
-      # fa colors per vertex
-      scalars = tubes.GetPointData().GetArray(0)
-      scalars.SetName("scalars")
-
-      colorNode = lineDisplayNode.GetColorNode()
-      lookupTable = vtk.vtkLookupTable()
-      lookupTable.DeepCopy(colorNode.GetLookupTable())
-      lookupTable.SetTableRange(0,1)
-   """
+import glTFLib
+import jsonmodel
 
 #
 # WebServer
@@ -421,12 +44,12 @@ class WebServer:
     parent.title = "Web Server"
     parent.categories = ["Servers"]
     parent.dependencies = []
-    parent.contributors = ["Steve Pieper (Isomics)"] # replace with "Firstname Lastname (Org)"
+    parent.contributors = ["Steve Pieper (Isomics)"]
     parent.helpText = """Provides an embedded web server for slicer that provides a web services API for interacting with slicer.
     """
     parent.acknowledgementText = """
 This work was partially funded by NIH grant 3P41RR013218.
-""" # replace with organization, grant and thanks.
+"""
     self.parent = parent
 
 
@@ -439,12 +62,10 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
   https://github.com/Slicer/Slicer/blob/master/Base/Python/slicer/ScriptedLoadableModule.py
   """
 
-
   def __init__(self, parent=None):
     ScriptedLoadableModuleWidget.__init__(self, parent)
-    self.observerTags = []
-    self.guiMessages = True
-    self.consoleMessages = True
+    self.guiMessages = False
+    self.consoleMessages = False
 
   def enter(self):
     pass
@@ -495,23 +116,48 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     # TODO: warning dialog on first connect
     # TODO: config option for port
 
-    # open local connection button
+    # open browser page
     self.localConnectionButton = qt.QPushButton("Open Browser Page")
     self.localConnectionButton.toolTip = "Open a connection to the server on the local machine with your system browser."
     self.layout.addWidget(self.localConnectionButton)
     self.localConnectionButton.connect('clicked()', self.openLocalConnection)
 
-    # open local connection button
-    self.localQtConnectionButton = qt.QPushButton("Open QtWebKit Page")
+    # open slicer widget
+    self.localQtConnectionButton = qt.QPushButton("Open SlicerWeb demo in WebWidget Page")
     self.localQtConnectionButton.toolTip = "Open a connection with Qt to the server on the local machine."
     self.layout.addWidget(self.localQtConnectionButton)
-    self.localQtConnectionButton.connect('clicked()', self.openQtLocalConnection)
+    self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('http://localhost:2016'))
 
-    # open local connection button
+    # open step demo in widget
+    self.localQtConnectionButton = qt.QPushButton("Open STEP in WebWidget")
+    self.localQtConnectionButton.toolTip = "Open a connection with Qt to the server on the local machine."
+    self.layout.addWidget(self.localQtConnectionButton)
+    self.localQtConnectionButton.connect('clicked()', lambda : self.openQtLocalConnection('http://pieper.github.io/step'))
+
+    # qiicr chart button
     self.qiicrChartButton = qt.QPushButton("Open QIICR Chart Demo")
     self.qiicrChartButton.toolTip = "Open the QIICR chart demo.  You need to be on the internet to access the page and you need to have the QIICR Iowa data loaded in your DICOM database in order to drill down to the image level."
     self.layout.addWidget(self.qiicrChartButton)
     self.qiicrChartButton.connect('clicked()', self.openQIICRChartDemo)
+
+    # export scene
+    self.exportSceneButton = qt.QPushButton("Export Scene")
+    self.exportSceneButton.toolTip = "Export the current scene to a web site (only models and tracts supported)."
+    self.layout.addWidget(self.exportSceneButton)
+    self.exportSceneButton.connect('clicked()', self.exportScene)
+
+    # slivr button
+    self.slivrButton = qt.QPushButton("Open Slivr Demo")
+    self.slivrButton.toolTip = "Open the Slivr demo.  Example of VR export."
+    self.layout.addWidget(self.slivrButton)
+    self.slivrButton.connect('clicked()', self.openSlivrDemo)
+
+    # ohif button
+    self.ohifButton = qt.QPushButton("Open OHIF Demo")
+    self.ohifButton.toolTip = "Open the OHIF demo.  Example of dicomweb access."
+    self.layout.addWidget(self.ohifButton)
+    self.ohifButton.connect('clicked()', self.openOHIFDemo)
+
 
     self.logic = WebServerLogic(logMessage=self.logMessage)
     self.logic.start()
@@ -522,30 +168,28 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
   def openLocalConnection(self):
     qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016'))
 
-  def openQtLocalConnection(self):
-    self.webView = qt.QWebView()
+  def openQtLocalConnection(self,url='http://localhost:2016'):
+    self.webWidget = slicer.qSlicerWebWidget()
     html = """
-    <h1>Loading from <a href="http://localhost:2016">Localhost 2016</a></h1>
-    """
-    self.webView.setHtml(html)
-    self.webView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
-    self.webView.setUrl(qt.QUrl('http://localhost:2016/work'))
-    self.webView.show()
+    <h1>Loading from <a href="%(url)s">%(url)s/a></h1>
+    """ % {'url' : url}
+    # self.webWidget.html = html
+    self.webWidget.url = 'http://localhost:2016/work'
+    self.webWidget.url = url
+    self.webWidget.show()
 
   def openQIICRChartDemo(self):
-    self.qiicrWebView = qt.QWebView()
-    self.qiicrWebView.setGeometry(50, 50, 1750, 1200)
-    url = "http://localhost:12345/dcsr/qiicr-chart/index.html"
+    self.qiicrWebWidget = slicer.qSlicerWebWidget()
+    self.qiicrWebWidget.setGeometry(50, 50, 1750, 1200)
     url = "http://pieper.github.io/qiicr-chart/dcsr/qiicr-chart"
     html = """
     <h1>Loading from <a href="%(url)s">%(url)s/a></h1>
     """ % {'url' : url}
-    self.qiicrWebView.setHtml(html)
-    self.qiicrWebView.settings().setAttribute(qt.QWebSettings.DeveloperExtrasEnabled, True)
-    self.qiicrWebView.setUrl(qt.QUrl(url))
-    self.qiicrWebView.show()
+    # self.qiicrWebWidget.html = html
+    self.qiicrWebWidget.url = url
+    self.qiicrWebWidget.show()
 
-    page = self.qiicrWebView.page()
+    page = self.qiicrWebWidget.page()
     if not page.connect('statusBarMessage(QString)', self.qiicrChartMessage):
       logging.error('statusBarMessage connect failed')
 
@@ -569,6 +213,20 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.detailsPopup.offerLoadables(seriesUID, 'Series')
     self.detailsPopup.examineForLoading()
     self.detailsPopup.loadCheckedLoadables()
+
+  def exportScene(self):
+    exportDirectory = ctk.ctkFileDialog.getExistingDirectory()
+    if exportDirectory.endswith('/untitled'):
+      # this happens when you select inside of a directory on mac
+      exportDirectory = exportDirectory[:-len('/untitled')]
+    if exportDirectory != '':
+      self.logic.exportScene(exportDirectory)
+
+  def openSlivrDemo(self):
+    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016/slivr'))
+
+  def openOHIFDemo(self):
+    qt.QDesktopServices.openUrl(qt.QUrl('http://localhost:2016/ohif'))
 
   def onReload(self):
     self.logic.stop()
@@ -606,27 +264,28 @@ class StaticRequestHandler(object):
     """Return directory listing or binary contents of files
     TODO: other header fields like modified time
     """
-    contentType = 'text/plain'
+    contentType = b'text/plain'
     responseBody = None
-    if uri.startswith('/'):
+    if uri.startswith(b'/'):
       uri = uri[1:]
     path = os.path.join(self.docroot,uri)
     self.logMessage('docroot: %s' % self.docroot)
     if os.path.isdir(path):
-      for index in "index.html", "index.htm":
+      for index in b"index.html", b"index.htm":
         index = os.path.join(path, index)
         if os.path.exists(index):
           path = index
-    self.logMessage('Serving: %s' % path)
+    self.logMessage(b'Serving: %s' % path)
     if os.path.isdir(path):
-      contentType = "text/html"
-      responseBody = "<ul>"
+      contentType = b"text/html"
+      responseBody = b"<ul>"
       for entry in os.listdir(path):
-        responseBody += "<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
+        responseBody += b"<li><a href='%s'>%s</a></li>" % (os.path.join(uri,entry), entry)
+      responseBody += b"</ul>"
     else:
-      ext = os.path.splitext(path)[-1]
+      ext = os.path.splitext(path)[-1].decode()
       if ext in mimetypes.types_map:
-        contentType = mimetypes.types_map[ext]
+        contentType = mimetypes.types_map[ext].encode()
       try:
         fp = open(path, 'rb')
         responseBody = fp.read()
@@ -634,6 +293,127 @@ class StaticRequestHandler(object):
       except IOError:
         responseBody = None
     return contentType, responseBody
+
+#
+# DICOMRequestHandler
+#
+
+class DICOMRequestHandler(object):
+  """
+  Implements the mapping between DICOMweb endpoints
+  and ctkDICOMDatabase api calls.
+  """
+
+  def __init__(self, logMessage):
+    self.logMessage = logMessage
+    self.logMessage('Starting DICOMRequestHandler')
+    self.retrieveURLTag = pydicom.tag.Tag(0x00080190)
+    self.numberOfStudyRelatedSeriesTag = pydicom.tag.Tag(0x00200206)
+    self.numberOfStudyRelatedInstancesTag = pydicom.tag.Tag(0x00200208)
+
+  def handleDICOMRequest(self,parsedURL,requestBody):
+    contentType = b'text/plain'
+    responseBody = None
+    splitPath = parsedURL.path.split(b'/')
+    if len(splitPath) > 2 and splitPath[2].startswith(b"studies"):
+      self.logMessage('handling studies')
+      contentType, responseBody = self.handleStudies(parsedURL, requestBody)
+    elif len(splitPath) > 2 and splitPath[2].startswith(b"series"):
+      pass
+    else:
+      self.logMessage('Looks like wadouri %s' % parsedURL.query)
+      contentType, responseBody = self.handleWADOURI(parsedURL, requestBody)
+    return contentType, responseBody
+
+  def handleStudies(self, parsedURL, requestBody):
+    contentType = b'application/json'
+    splitPath = parsedURL.path.split(b'/')
+    responseBody = b"[{}]"
+    if len(splitPath) == 3:
+      # studies qido search
+      representativeSeries = None
+      studyResponseString = b"["
+      for patient in slicer.dicomDatabase.patients():
+        for study in slicer.dicomDatabase.studiesForPatient(patient):
+          series = slicer.dicomDatabase.seriesForStudy(study)
+          numberOfStudyRelatedSeries = len(series)
+          numberOfStudyRelatedInstances = 0
+          modalitiesInStudy = set()
+          for serie in series:
+            seriesInstances = slicer.dicomDatabase.instancesForSeries(serie)
+            numberOfStudyRelatedInstances += len(seriesInstances)
+            if len(seriesInstances) > 0:
+              representativeSeries = serie
+              try:
+                dataset = pydicom.dcmread(slicer.dicomDatabase.fileForInstance(seriesInstances[0]), stop_before_pixels=True)
+                modalitiesInStudy.add(dataset.Modality)
+              except AttributeError as e:
+                print('Could not get instance information for %s' % seriesInstances[0])
+                print(e)
+          if representativeSeries is None:
+            print('Could not find any instances for study %s' % study)
+            continue
+          instances = slicer.dicomDatabase.instancesForSeries(representativeSeries)
+          firstInstance = instances[0]
+          dataset = pydicom.dcmread(slicer.dicomDatabase.fileForInstance(firstInstance), stop_before_pixels=True)
+          studyDataset = pydicom.dataset.Dataset()
+          studyDataset.SpecificCharacterSet =  [u'ISO_IR 100']
+          studyDataset.StudyDate = dataset.StudyDate
+          studyDataset.StudyTime = dataset.StudyTime
+          studyDataset.StudyDescription = dataset.StudyDescription
+          studyDataset.StudyInstanceUID = dataset.StudyInstanceUID
+          studyDataset.AccessionNumber = dataset.AccessionNumber
+          studyDataset.InstanceAvailability = u'ONLINE'
+          studyDataset.ModalitiesInStudy = list(modalitiesInStudy)
+          studyDataset.ReferringPhysicianName = dataset.ReferringPhysicianName
+          studyDataset[self.retrieveURLTag] = pydicom.dataelem.DataElement(
+              0x00080190, "UR", "TODO: provide WADO-RS RetrieveURL")
+          studyDataset.PatientName = dataset.PatientName
+          studyDataset.PatientID = dataset.PatientID
+          studyDataset.PatientBirthDate = dataset.PatientBirthDate
+          studyDataset.PatientSex = dataset.PatientSex
+          studyDataset.StudyID = dataset.StudyID
+          studyDataset[self.numberOfStudyRelatedSeriesTag] = pydicom.dataelem.DataElement(
+              self.numberOfStudyRelatedSeriesTag, "IS", str(numberOfStudyRelatedSeries))
+          studyDataset[self.numberOfStudyRelatedInstancesTag] = pydicom.dataelem.DataElement(
+              self.numberOfStudyRelatedInstancesTag, "IS", str(numberOfStudyRelatedInstances))
+          jsonDataset = studyDataset.to_json(studyDataset)
+          studyResponseString += jsonDataset.encode() + b","
+      if studyResponseString.endswith(b','):
+        studyResponseString = studyResponseString[:-1]
+      studyResponseString += b']'
+      responseBody = studyResponseString
+    elif splitPath[4] == b'metadata':
+      self.logMessage('returning metadata')
+      contentType = b'application/json'
+      responseBody = b"["
+      studyUID = splitPath[3].decode()
+      series = slicer.dicomDatabase.seriesForStudy(studyUID)
+      for serie in series:
+        seriesInstances = slicer.dicomDatabase.instancesForSeries(serie)
+        for instance in seriesInstances:
+          dataset = pydicom.dcmread(slicer.dicomDatabase.fileForInstance(instance), stop_before_pixels=True)
+          jsonDataset = dataset.to_json()
+          responseBody += jsonDataset.encode() + b","
+      if responseBody.endswith(b','):
+        responseBody = responseBody[:-1]
+      responseBody += b']'
+    return contentType, responseBody
+
+  def handleWADOURI(self, parsedURL, requestBody):
+    q = urlparse.parse_qs(parsedURL.query)
+    try:
+      instanceUID = q[b'objectUID'][0].decode().strip()
+    except KeyError:
+      return None,None
+    self.logMessage('found uid %s' % instanceUID)
+    contentType = b'application/dicom'
+    path = slicer.dicomDatabase.fileForInstance(instanceUID)
+    fp = open(path, 'rb')
+    responseBody = fp.read()
+    fp.close()
+    return contentType, responseBody
+
 
 #
 # SlicerRequestHandler
@@ -644,102 +424,119 @@ class SlicerRequestHandler(object):
   def __init__(self, logMessage):
     self.logMessage = logMessage
 
-  def vtkImageDataToPNG(self,imageData,method='VTK'):
+  def registerOneTimeBuffers(self, buffers):
+    """ This allows data to be made avalable for subsequent access
+    at a specific endpoint by filename.  To avoid memory buildup
+    they are only accessible once and then deleted.
+
+    The specific use case is for binary files containing glTF array
+    data that is referenced from the glTF json.
+    """
+    # TODO: this should not be stored in the widget, but that is a known place where it
+    # can persist across the lifetime of the server
+    slicer.modules.WebServerWidget.oneTimeBuffers = buffers
+
+  def vtkImageDataToPNG(self,imageData):
     """Return a buffer of png data using the data
     from the vtkImageData.
     """
-    if method == 'PIL':
-      if imageData:
-        imageData.Update()
-        imageScalars = imageData.GetPointData().GetScalars()
-        imageArray = vtk.util.numpy_support.vtk_to_numpy(imageScalars)
-        d = imageData.GetDimensions()
-        im = Image.fromarray( numpy.flipud( imageArray.reshape([d[1],d[0],4]) ) )
-      else:
-        # no data available, make a small black opaque image
-        a = numpy.zeros(100*100*4, dtype='uint8').reshape([100,100,4])
-        a[:,:,3] = 255
-        im = Image.fromarray( a )
-      #if size:
-        #im.thumbnail((size,size), Image.ANTIALIAS)
-      pngStringIO = StringIO.StringIO()
-      im.save(pngStringIO, format="PNG")
-      pngData = pngStringIO.getvalue()
-    elif method == 'VTK':
-      writer = vtk.vtkPNGWriter()
-      writer.SetWriteToMemory(True)
-      writer.SetInputData(imageData)
-      writer.SetCompressionLevel(0)
-      writer.Write()
-      result = writer.GetResult()
-      pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
-      pngStringIO = StringIO.StringIO()
-      pngStringIO.write(pngArray)
-      pngData = pngStringIO.getvalue()
+    writer = vtk.vtkPNGWriter()
+    writer.SetWriteToMemory(True)
+    writer.SetInputData(imageData)
+    # use compression 0 since data transfer is faster than compressing
+    writer.SetCompressionLevel(0)
+    writer.Write()
+    result = writer.GetResult()
+    pngArray = vtk.util.numpy_support.vtk_to_numpy(result)
+    pngData = pngArray.tobytes()
 
     return pngData
 
-  def handleSlicerCommand(self, cmd, requestBody):
-    import traceback
+  def handleSlicerRequest(self, request, requestBody):
     responseBody = None
-    contentType = 'text/plain'
+    contentType = b'text/plain'
     try:
-      if cmd.find('/repl') == 0:
-        responseBody = self.repl(cmd, requestBody)
-      elif cmd.find('/preset') == 0:
-        responseBody = self.preset(cmd)
-      elif cmd.find('/timeimage') == 0:
-        responseBody = self.timeimage(cmd)
-      elif cmd.find('/slice') == 0:
-        responseBody = self.slice(cmd)
-        contentType = 'image/png',
-      elif cmd.find('/threeD') == 0:
-        responseBody = self.threeD(cmd)
-        contentType = 'image/png',
-      elif cmd.find('/mrml') == 0:
-        responseBody = self.mrml(cmd)
-        contentType = 'application/json',
-      elif cmd.find('/transform') == 0:
-        responseBody = self.transform(cmd)
-      elif cmd.find('/eulers') == 0:
-        responseBody = self.eulers(cmd)
-      elif cmd.find('/volumeSelection') == 0:
-        responseBody = self.volumeSelection(cmd)
-      elif cmd.find('/volume') == 0:
-        responseBody = self.volume(cmd, requestBody)
-        contentType = 'application/octet-stream',
-      elif cmd.find('/fiducial') == 0:
-        responseBody = self.fiducial(cmd, requestBody)
-        contentType = 'application/json',
+      if hasattr(slicer.modules.WebServerWidget, 'oneTimeBuffers'):
+        self.oneTimeBuffers = slicer.modules.WebServerWidget.oneTimeBuffers
       else:
-        responseBody = "unknown command \"" + cmd + "\""
+        if not hasattr(self, 'oneTimeBuffers'):
+          self.oneTimeBuffers = {}
+      bufferFileName = request[1:].decode() # strip first, make string
+      if bufferFileName in self.oneTimeBuffers.keys():
+        contentType = b'application/octet-stream',
+        responseBody = self.oneTimeBuffers[bufferFileName].tobytes()
+        del(self.oneTimeBuffers[bufferFileName])
+      elif request.find(b'/repl') == 0:
+        responseBody = self.repl(request, requestBody)
+      elif request.find(b'/preset') == 0:
+        responseBody = self.preset(request)
+      elif request.find(b'/timeimage') == 0:
+        responseBody = self.timeimage(request)
+        contentType = b'image/png'
+      elif request.find(b'/slice') == 0:
+        responseBody = self.slice(request)
+        contentType = b'image/png',
+      elif request.find(b'/threeD') == 0:
+        responseBody = self.threeD(request)
+        contentType = b'image/png',
+      elif request.find(b'/mrml') == 0:
+        responseBody = self.mrml(request)
+        contentType = b'application/json',
+      elif request.find(b'/tracking') == 0:
+        responseBody = self.tracking(request)
+      elif request.find(b'/eulers') == 0:
+        responseBody = self.eulers(request)
+      elif request.find(b'/volumeSelection') == 0:
+        responseBody = self.volumeSelection(request)
+      elif request.find(b'/volumes') == 0:
+        responseBody = self.volumes(request, requestBody)
+        contentType = b'application/json',
+      elif request.find(b'/volume') == 0:
+        responseBody = self.volume(request, requestBody)
+        contentType = b'application/octet-stream',
+      elif request.find(b'/transform') == 0:
+        responseBody = self.transform(request, requestBody)
+        contentType = b'application/octet-stream',
+      elif request.find(b'/fiducials') == 0:
+        responseBody = self.fiducials(request, requestBody)
+        contentType = b'application/json',
+      elif request.find(b'/fiducial') == 0:
+        responseBody = self.fiducial(request, requestBody)
+        contentType = b'application/json',
+      else:
+        responseBody = b"unknown command \"" + request + b"\""
     except:
-      message = traceback.format_exc()
-      self.logMessage("Could not handle slicer command: %s" % cmd)
-      self.logMessage(message)
-
+      self.logMessage("Could not handle slicer command: %s" % request)
+      etype, value, tb = sys.exc_info()
+      import traceback
+      self.logMessage(etype, value)
+      self.logMessage(traceback.format_tb(tb))
+      print(etype, value)
+      print(traceback.format_tb(tb))
+      for frame in traceback.format_tb(tb):
+        print(frame)
     return contentType, responseBody
 
-  def repl(self,cmd, requestBody):
+  def repl(self,request, requestBody):
     self.logMessage('repl with body %s' % requestBody)
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     if requestBody:
       source = requestBody
     else:
       try:
-        source = urllib.unquote(q['source'][0])
+        source = urllib.parse.unquote(q['source'][0])
       except KeyError:
         self.logMessage('need to supply source code to run')
         return ""
     self.logMessage('will run %s' % source)
-    code = compile(source, '<slicr-repl>', 'single')
-    result = str(eval(code, globals()))
+    code = compile(source, '<slicr-repl>', 'exec')
+    result = eval(code, globals())
     self.logMessage('result: %s' % result)
     return result
 
-  def preset(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def preset(self,request):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       id = q['id'][0].strip().lower()
@@ -843,11 +640,11 @@ class SlicerRequestHandler(object):
         slicer.mrmlScene.AddNode(self.tracker)
         self.trackingDevice.SetAndObserveTransformNodeID(self.tracker.GetID())
 
-  def eulers(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def eulers(self,request):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
-    alpha,beta,gamma = map(float,q['angles'][0].split(','))
+    alpha,beta,gamma = list(map(float,q['angles'][0].split(',')))
 
     self.setupMRMLTracking()
     transform = vtk.vtkTransform()
@@ -858,17 +655,17 @@ class SlicerRequestHandler(object):
 
     return ( "got it" )
 
-  def transform(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def tracking(self,request):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
-    transformMatrix = map(float,q['m'][0].split(','))
+    transformMatrix = list(map(float,q['m'][0].split(',')))
 
     self.setupMRMLTracking()
     m = self.tracker.GetMatrixTransformToParent()
     m.Identity()
-    for row in xrange(3):
-      for column in xrange(3):
+    for row in range(3):
+      for column in range(3):
         m.SetElement(row,column, transformMatrix[3*row+column])
         m.SetElement(row,column, transformMatrix[3*row+column])
         m.SetElement(row,column, transformMatrix[3*row+column])
@@ -877,8 +674,8 @@ class SlicerRequestHandler(object):
 
     return ( "got it" )
 
-  def volumeSelection(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def volumeSelection(self,request):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       cmd = q['cmd'][0].strip().lower()
@@ -913,8 +710,17 @@ class SlicerRequestHandler(object):
     applicationLogic.PropagateVolumeSelection(0)
     return ( "got it" )
 
-  def volume(self, cmd, requestBody):
-    p = urlparse.urlparse(cmd)
+  def volumes(self, request, requestBody):
+    volumes = []
+    mrmlVolumes = slicer.util.getNodes('vtkMRMLScalarVolumeNode*')
+    mrmlVolumes.update(slicer.util.getNodes('vtkMRMLLabelMapVolumeNode*'))
+    for id_ in mrmlVolumes.keys():
+      volumeNode = mrmlVolumes[id_]
+      volumes.append({"name": volumeNode.GetName(), "id": volumeNode.GetID()})
+    return ( json.dumps(volumes).encode() )
+
+  def volume(self, request, requestBody):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       volumeID = q['id'][0].strip()
@@ -926,54 +732,67 @@ class SlicerRequestHandler(object):
     else:
       return self.getNRRD(volumeID)
 
+  def transform(self, request, requestBody):
+    p = urlparse.urlparse(request.decode())
+    q = urlparse.parse_qs(p.query)
+    try:
+      transformID = q['id'][0].strip()
+    except KeyError:
+      transformID = 'vtkMRMLTransformNode*'
+
+    if requestBody:
+      return self.postTransformNRRD(transformID, requestBody)
+    else:
+      return self.getTransformNRRD(transformID)
+
   def postNRRD(self, volumeID, requestBody):
     """Convert a binary blob of nrrd data into a node in the scene.
     Overwrite volumeID if it exists, otherwise create new"""
 
-    if requestBody[:4] != "NRRD":
+    if requestBody[:4] != b"NRRD":
       self.logMessage('Cannot load non-nrrd file (magic is %s)' % requestBody[:4])
       return
 
     fields = {}
-    endOfHeader = requestBody.find('\n\n') #TODO: could be \r\n
+    endOfHeader = requestBody.find(b'\n\n') #TODO: could be \r\n
     header = requestBody[:endOfHeader]
     self.logMessage(header)
-    for line in header.split('\n'):
-      colonIndex = line.find(':')
+    for line in header.split(b'\n'):
+      colonIndex = line.find(b':')
       if line[0] != '#' and colonIndex != -1:
         key = line[:colonIndex]
         value = line[colonIndex+2:]
         fields[key] = value
 
-    if fields['type'] != 'short':
+    if fields[b'type'] != b'short':
       self.logMessage('Can only read short volumes')
-      return "{'status': 'failed'}"
-    if fields['dimension'] != '3':
+      return b"{'status': 'failed'}"
+    if fields[b'dimension'] != b'3':
       self.logMessage('Can only read 3D, 1 component volumes')
-      return "{'status': 'failed'}"
-    if fields['endian'] != 'little':
+      return b"{'status': 'failed'}"
+    if fields[b'endian'] != b'little':
       self.logMessage('Can only read little endian')
-      return "{'status': 'failed'}"
-    if fields['encoding'] != 'raw':
+      return b"{'status': 'failed'}"
+    if fields[b'encoding'] != b'raw':
       self.logMessage('Can only read raw encoding')
-      return "{'status': 'failed'}"
-    if fields['space'] != 'left-posterior-superior':
+      return b"{'status': 'failed'}"
+    if fields[b'space'] != b'left-posterior-superior':
       self.logMessage('Can only read space in LPS')
-      return "{'status': 'failed'}"
+      return b"{'status': 'failed'}"
 
     imageData = vtk.vtkImageData()
-    imageData.SetDimensions(map(int,fields['sizes'].split(' ')))
+    imageData.SetDimensions(list(map(int,fields[b'sizes'].split(b' '))))
     imageData.AllocateScalars(vtk.VTK_SHORT, 1)
 
-    origin = map(float, fields['space origin'].replace('(','').replace(')','').split(','))
+    origin = list(map(float, fields[b'space origin'].replace(b'(',b'').replace(b')',b'').split(b',')))
     origin[0] *= -1
     origin[1] *= -1
 
     directions = []
-    directionParts = fields['space directions'].split(')')[:3]
+    directionParts = fields[b'space directions'].split(b')')[:3]
     for directionPart in directionParts:
-      part = directionPart.replace('(','').replace(')','').split(',')
-      directions.append(map(float, part))
+      part = directionPart.replace(b'(',b'').replace(b')',b'').split(b',')
+      directions.append(list(map(float, part)))
 
     ijkToRAS = vtk.vtkMatrix4x4()
     ijkToRAS.Identity()
@@ -985,7 +804,10 @@ class SlicerRequestHandler(object):
           element *= -1
         ijkToRAS.SetElement(row,column, element)
 
-    node = slicer.util.getNode(volumeID)
+    try:
+      node = slicer.util.getNode(volumeID)
+    except slicer.util.MRMLNodeNotFoundException:
+      node = None
     if not node:
       node = slicer.vtkMRMLScalarVolumeNode()
       node.SetName(volumeID)
@@ -1005,7 +827,7 @@ class SlicerRequestHandler(object):
     slicer.app.applicationLogic().GetSelectionNode().SetReferenceActiveVolumeID(node.GetID())
     slicer.app.applicationLogic().PropagateVolumeSelection()
 
-    return "{'status': 'success'}"
+    return b"{'status': 'success'}"
 
   def getNRRD(self, volumeID):
     """Return a nrrd binary blob with contents of the volume node"""
@@ -1026,28 +848,29 @@ class SlicerRequestHandler(object):
     scalarType = imageData.GetScalarTypeAsString()
     if scalarType not in supportedScalarTypes:
       self.logMessage('Can only get volumes of types %s, not %s' % (str(supportedScalarTypes), scalarType))
-      return None
+      self.logMessage('Converting to short, but may cause data loss.')
+      volumeArray = numpy.array(volumeArray, dtype='int16')
 
     sizes = imageData.GetDimensions()
-    sizes = " ".join(map(str,sizes))
+    sizes = " ".join(list(map(str,sizes)))
 
     originList = [0,]*3
     directionLists = [[0,]*3,[0,]*3,[0,]*3]
     ijkToRAS = vtk.vtkMatrix4x4()
     volumeNode.GetIJKToRASMatrix(ijkToRAS)
-    for row in xrange(3):
+    for row in range(3):
       originList[row] = ijkToRAS.GetElement(row,3)
-      for column in xrange(3):
+      for column in range(3):
         element = ijkToRAS.GetElement(row,column)
         if row < 2:
           element *= -1
         directionLists[column][row] = element
     originList[0] *=-1
     originList[1] *=-1
-    origin = '('+','.join(map(str,originList))+')'
+    origin = '('+','.join(list(map(str,originList)))+')'
     directions = ""
     for directionList in directionLists:
-      direction = '('+','.join(map(str,directionList))+')'
+      direction = '('+','.join(list(map(str,directionList)))+')'
       directions += direction + " "
     directions = directions[:-1]
 
@@ -1070,14 +893,92 @@ space origin: %%origin%%
 
 """.replace("%%scalarType%%", scalarType).replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
 
+    nrrdData = nrrdHeader.encode() + volumeArray.tobytes()
+    return nrrdData
 
-    nrrdData = StringIO.StringIO()
-    nrrdData.write(nrrdHeader)
-    nrrdData.write(volumeArray.data)
-    return nrrdData.getvalue()
+  def getTransformNRRD(self, transformID):
+    """Return a nrrd binary blob with contents of the transform node"""
+    transformNode = slicer.util.getNode(transformID)
+    transformArray = slicer.util.array(transformID)
 
-  def fiducial(self, cmd, requestBody):
-    p = urlparse.urlparse(cmd)
+    if transformNode is None or transformArray is None:
+      self.logMessage('Could not find requested transform')
+      return None
+    supportedNodes = ["vtkMRMLGridTransformNode",]
+    if not transformNode.GetClassName() in supportedNodes:
+      self.logMessage('Can only get grid transforms')
+      return None
+
+    # map the vectors to be in the LPS measurement frame
+    # (need to make a copy so as not to change the slicer transform)
+    lpsArray = numpy.array(transformArray)
+    lpsArray *= numpy.array([-1,-1,1])
+
+    imageData = transformNode.GetTransformFromParent().GetDisplacementGrid()
+
+    # for now, only handle non-oriented grid transform as
+    # generated from LandmarkRegistration
+    # TODO: generalize for any GridTransform node
+
+    sizes = (3,) + imageData.GetDimensions()
+    sizes = " ".join(list(map(str,sizes)))
+
+    spacing = list(imageData.GetSpacing())
+    spacing[0] *= -1 # RAS to LPS
+    spacing[1] *= -1 # RAS to LPS
+    directions = '(%g,0,0) (0,%g,0) (0,0,%g)' % tuple(spacing)
+
+    origin = list(imageData.GetOrigin())
+    origin[0] *= -1 # RAS to LPS
+    origin[1] *= -1 # RAS to LPS
+    origin = '(%g,%g,%g)' % tuple(origin)
+
+    # should look like:
+    #space directions: (0,1,0) (0,0,-1) (-1.2999954223632812,0,0)
+    #space origin: (86.644897460937486,-133.92860412597656,116.78569793701172)
+
+    nrrdHeader = """NRRD0004
+# Complete NRRD file format specification at:
+# http://teem.sourceforge.net/nrrd/format.html
+type: float
+dimension: 4
+space: left-posterior-superior
+sizes: %%sizes%%
+space directions: %%directions%%
+kinds: vector domain domain domain
+endian: little
+encoding: raw
+space origin: %%origin%%
+
+""".replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
+
+
+    nrrdData = nrrdHeader.encode() + lpsArray.tobytes()
+    return nrrdData
+
+  def fiducials(self, request, requestBody):
+    """return fiducials list in ad hoc json structure"""
+    fiducials = {}
+    for markupsNode in slicer.util.getNodesByClass('vtkMRMLMarkupsFiducialNode'):
+      displayNode = markupsNode.GetDisplayNode()
+      node = {}
+      node['name'] = markupsNode.GetName()
+      node['color'] = displayNode.GetSelectedColor()
+      node['scale'] = displayNode.GetGlyphScale()
+      node['markups'] = []
+      for markupIndex in range(markupsNode.GetNumberOfMarkups()):
+        position = [0,]*3
+        markupsNode.GetNthFiducialPosition(markupIndex, position)
+        position
+        node['markups'].append( {
+          'label': markupsNode.GetNthFiducialLabel(markupIndex),
+          'position': position
+        })
+      fiducials[markupsNode.GetID()] = node
+    return ( json.dumps( fiducials ) )
+
+  def fiducial(self, request, requestBody):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       fiducialID = q['id'][0].strip()
@@ -1104,185 +1005,41 @@ space origin: %%origin%%
     fiducialNode.SetNthFiducialPosition(index, float(r), float(a), float(s));
     return "{'result': 'ok'}"
 
-
-  def mrmlToThreejs(self):
-    """
-    Returns a json document string in the format supported by threejs
-    and described here: https://github.com/mrdoob/three.js/wiki/JSON-Geometry-format-4
-    """
-    THREE = {
-      "TriangleFanDrawMode": 2,
-      "TriangleStripDrawMode": 1,
-      "TrianglesDrawMode": 0,
-      "FrontSide": 0,
-      "BackSide": 1,
-      "DoubleSide": 2,
-    }
-    exportScene = {
-      "metadata": {
-        "version": 4.4,
-        "type": "Object",
-        "generator": "3D Slicer.SlicerWeb.WebServer.mrmlToThreejs"
-      },
-      "geometries": [],
-      "materials": [],
-      "object": {
-        "uuid": str(uuid.uuid1()),
-        "type": "Scene",
-        "name": "Slicer Scene",
-        "children": []
-      }
-    }
-    sceneChildren = exportScene['object']['children']
-    sceneChildren.append({
-      "uuid": str(uuid.uuid1()),
-      "type": "Group",
-      "name": "Camera Group",
-      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,0,100,400,1],
-      "children": [
-        {
-          "uuid": str(uuid.uuid1()),
-          "type": "PerspectiveCamera",
-          "name": "PerspectiveCamera",
-          "matrix": [-1,0,0,0,0,1,0,0,0,0,-1,0,0,0,0,1],
-          "fov": 50,
-          "zoom": 1,
-          "near": 100,
-          "far": 10000,
-          "focus": 10,
-          "aspect": 1,
-        }
-      ]
-    })
-    sceneChildren.append({
-      "uuid": str(uuid.uuid1()),
-      "type": "DirectionalLight",
-      "name": "DirectionalLight 1",
-      "matrix": [1,0,0,0,0,1,0,0,0,0,1,0,5,10,7.5,1],
-      "color": 16777215,
-      "intensity": 1,
-    })
-    models = slicer.util.getNodes('vtkMRMLModelNode*')
-    for model in models.values():
-      display = model.GetDisplayNode()
-      materialUUID = str(uuid.uuid1())
-      c = display.GetColor()
-      color = int(255*255*255*c[0] + 255*255*c[1] + 255*c[2])
-      visible = display.GetVisibility() == 1
-      front = display.GetFrontfaceCulling() == 1
-      back = display.GetBackfaceCulling() == 1
-      side = THREE["FrontSide"]
-      if front and not back:
-        side = THREE["BackSide"]
-      if not front and not back:
-        side = THREE["DoubleSide"]
-      if back and front:
-        visible = False
-      exportScene["materials"].append({
-        "uuid": materialUUID,
-        "type": "MeshPhongMaterial",
-        "color": color,
-        "side": side
-      })
-      geometryUUID = str(uuid.uuid1())
-      index = []
-      position = []
-      normal = []
-      exportScene["geometries"].append({
-        "uuid": geometryUUID,
-        "name": model.GetName(),
-        "type": "BufferGeometry",
-        "data": {
-          "index": {
-            "itemSize": 1,
-            "type": "Uint16Array",
-            "array": index
-          },
-          "attributes": {
-            "position": {
-              "itemSize": 3,
-              "type": "Float32Array",
-              "array": position
-            },
-            "normal": {
-              "itemSize": 3,
-              "type": "Float32Array",
-              "array": normal
-            },
-          }
-        }
-      })
-      polyData = model.GetPolyData()
-      pointNormals = polyData.GetPointData().GetNormals()
-      for pointIndex in xrange(polyData.GetNumberOfPoints()):
-        position.extend(polyData.GetPoint(pointIndex))
-        normal.extend(pointNormals.GetTuple3(pointIndex))
-      triangleFilter = vtk.vtkTriangleFilter()
-      triangleFilter.SetInputDataObject(polyData)
-      triangleFilter.Update()
-      triangles = triangleFilter.GetOutput()
-      for cellIndex in xrange(triangles.GetNumberOfCells()):
-        pointIDs = triangles.GetCell(cellIndex).GetPointIds()
-        indices = [pointIDs.GetId(0), pointIDs.GetId(1), pointIDs.GetId(2)]
-        index.extend(indices)
-      sceneChildren.append({
-        "name": model.GetName(),
-        "uuid": str(uuid.uuid1()),
-        "material": materialUUID,
-        "visible": visible,
-        "type": "Mesh",
-        "geometry": geometryUUID
-      })
-    return(json.dumps(exportScene))
-
-    def fiberToThreejs(self):
-
-      # TODO
-      # - access fibers
-      # - change to glTF
-      lineDisplayNode = getNode("*LineDisplay*")
-
-      tuber = vtk.vtkTubeFilter()
-      tuber.SetInput(lineDisplayNode.GetOutputPolyData())
-
-      tubes = tuber.GetOutput()
-      tubes.Update()
-      scalars = tubes.GetPointData().GetArray(0)
-      scalars.SetName("scalars")
-
-      triangles = vtk.vtkTriangleFilter()
-      triangles.SetInput(tubes)
-
-      colorNode = lineDisplayNode.GetColorNode()
-      lookupTable = vtk.vtkLookupTable()
-      lookupTable.DeepCopy(colorNode.GetLookupTable())
-      lookupTable.SetTableRange(0,1)
-
-
-
-  def mrml(self,cmd):
-    p = urlparse.urlparse(cmd)
+  def mrml(self,request):
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       format = q['format'][0].strip().lower()
     except KeyError:
       format = 'glTF'
     try:
+      targetFiberCount = q['targetFiberCount'][0].strip().lower()
+    except KeyError:
+      targetFiberCount = None
+    try:
+      fiberMode = q['fiberMode'][0].strip().lower()
+    except KeyError:
+      fiberMode = 'lines'
+    try:
       id_ = q['id'][0].strip().lower()
     except KeyError:
       id_ = None
-    if format == 'threejs':
-      return (self.mrmlToThreejs())
     if format == 'glTF':
       nodeFilter = lambda node: True
       if id_:
         nodeFilter = lambda node: node.GetID().lower() == id_
-      exporter = glTFExporter(slicer.mrmlScene)
-      return (exporter.export(nodeFilter))
+      exporter = glTFLib.glTFExporter(slicer.mrmlScene)
+      glTF = exporter.export(options={
+        "nodeFilter": nodeFilter,
+        "targetFiberCount": targetFiberCount,
+        "fiberMode": fiberMode
+      })
+      self.registerOneTimeBuffers(exporter.buffers)
+      return glTF.encode()
     else:
       return ( json.dumps( slicer.util.getNodes('*').keys() ) )
 
-  def slice(self,cmd):
+  def slice(self,request):
     """return a png for a slice view.
     Args:
      view={red, yellow, green}
@@ -1290,13 +1047,10 @@ space origin: %%origin%%
      offset=mm offset relative to slice origin (position of slice slider)
      size=pixel size of output png
     """
-    pngMethod = 'PIL'
-    if not hasImage:
-      pngMethod = 'VTK'
     import vtk.util.numpy_support
     import numpy
 
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       view = q['view'][0].strip().lower()
@@ -1370,28 +1124,23 @@ space origin: %%origin%%
 
     imageData = sliceLogic.GetBlend().Update(0)
     imageData = sliceLogic.GetBlend().GetOutputDataObject(0)
-    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+    pngData = []
+    if imageData:
+        pngData = self.vtkImageDataToPNG(imageData)
     self.logMessage('returning an image of %d length' % len(pngData))
     return pngData
 
-  def threeD(self,cmd):
+  def threeD(self,request):
     """return a png for a threeD view
     Args:
      view={nodeid} (currently ignored)
      mode= (currently ignored)
      lookFromAxis = {L, R, A, P, I, S}
     """
-    pngMethod = 'PIL'
-    if not hasImage:
-      pngMethod = 'VTK'
     import numpy
     import vtk.util.numpy_support
-    try:
-        import cStringIO as StringIO
-    except ImportError:
-        import StringIO
 
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       view = q['view'][0].strip().lower()
@@ -1496,45 +1245,16 @@ space origin: %%origin%%
     w2i.Update()
     imageData = w2i.GetOutput()
 
-    pngData = self.vtkImageDataToPNG(imageData,method=pngMethod)
+    pngData = self.vtkImageDataToPNG(imageData)
     self.logMessage('threeD returning an image of %d length' % len(pngData))
     return pngData
 
-  def timeimagePIL(self):
-    """For debugging - return an image with the current time
-    rendered as text down to the hundredth of a second"""
-    if not hasImage:
-      self.logMessage('No image support')
-      return
-    from PIL import Image, ImageDraw, ImageFilter
-    try:
-        import cStringIO as StringIO
-    except ImportError:
-        import StringIO
-
-    # make an image
-    size = (100,30)             # size of the image to create
-    im = Image.new('RGB', size) # create the image
-    draw = ImageDraw.Draw(im)   # create a drawing object that is
-                                # used to draw on the new image
-    red = (255,200,100)    # color of our text
-    text_pos = (10,10) # top-left position of our text
-    text = str(time.time()) # text to draw
-    # Now, we'll do the drawing:
-    draw.text(text_pos, text, fill=red)
-    del draw # I'm done drawing so I don't need this anymore
-    im = im.filter(ImageFilter.SMOOTH)
-    # now, we tell the image to save as a PNG to the provided file-like object
-    pngData = StringIO.StringIO()
-    im.save(pngData, format="PNG")
-    return pngData.getvalue()
-
-  def timeimage(self,cmd=''):
+  def timeimage(self,request=''):
     """For debugging - return an image with the current time
     rendered as text down to the hundredth of a second"""
 
     # check arguments
-    p = urlparse.urlparse(cmd)
+    p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     try:
       color = "#" + q['color'][0].strip().lower()
@@ -1608,9 +1328,10 @@ class SlicerHTTPServer(HTTPServer):
       self.docroot = docroot
       self.logMessage = logMessage
       self.slicerRequestHandler = SlicerRequestHandler(logMessage)
+      self.dicomRequestHandler = DICOMRequestHandler(logMessage)
       self.staticRequestHandler = StaticRequestHandler(self.docroot, logMessage)
       self.expectedRequestSize = -1
-      self.requestSoFar = ""
+      self.requestSoFar = b""
       fileno = self.connectionSocket.fileno()
       self.readNotifier = qt.QSocketNotifier(fileno, qt.QSocketNotifier.Read)
       self.readNotifier.connect('activated(int)', self.onReadable)
@@ -1618,15 +1339,15 @@ class SlicerHTTPServer(HTTPServer):
 
     def onReadable(self, fileno):
       self.logMessage('Reading...')
-      requestHeader = ""
-      requestBody = ""
+      requestHeader = b""
+      requestBody = b""
       requestComplete = False
       requestPart = ""
       try:
         requestPart = self.connectionSocket.recv(1024*1024)
-        self.logMessage('Just received... %d' % len(requestPart))
+        self.logMessage('Just received... %d bytes in this part' % len(requestPart))
         self.requestSoFar += requestPart
-        endOfHeader = self.requestSoFar.find('\r\n\r\n')
+        endOfHeader = self.requestSoFar.find(b'\r\n\r\n')
         if self.expectedRequestSize > 0:
           self.logMessage('received... %d of %d expected' % (len(self.requestSoFar), self.expectedRequestSize))
           if len(self.requestSoFar) >= self.expectedRequestSize:
@@ -1636,11 +1357,11 @@ class SlicerHTTPServer(HTTPServer):
         else:
           if endOfHeader != -1:
             self.logMessage('Looking for content in header...')
-            contentLengthTag = self.requestSoFar.find('Content-Length:')
+            contentLengthTag = self.requestSoFar.find(b'Content-Length:')
             if contentLengthTag != -1:
               tag = self.requestSoFar[contentLengthTag:]
-              numberStartIndex = tag.find(' ')
-              numberEndIndex = tag.find('\r\n')
+              numberStartIndex = tag.find(b' ')
+              numberEndIndex = tag.find(b'\r\n')
               contentLength = int(tag[numberStartIndex:numberEndIndex])
               self.expectedRequestSize = 4 + endOfHeader + contentLength
               self.logMessage('Expecting a body of %d, total size %d' % (contentLength, self.expectedRequestSize))
@@ -1648,7 +1369,9 @@ class SlicerHTTPServer(HTTPServer):
               self.logMessage('Found end of header with no content, so body is empty')
               requestHeader = self.requestSoFar[:-2]
               requestComplete = True
-      except socket.error, e:
+      except socket.error as e:
+        print('Socket error: ', e)
+        print('So far:\n', self.requestSoFar)
         requestComplete = True
 
       if len(requestPart) == 0 or requestComplete:
@@ -1660,40 +1383,58 @@ class SlicerHTTPServer(HTTPServer):
           self.logMessage("Ignoring empty request")
           return
 
-        requestLines = requestHeader.split('\r\n')
+        method,uri,version = [b'GET', b'/', b'HTTP/1.1'] # defaults
+        requestLines = requestHeader.split(b'\r\n')
         self.logMessage(requestLines[0])
-        method,uri,version = requestLines[0].split(' ')
-        if version != "HTTP/1.1":
+        try:
+          method,uri,version = requestLines[0].split(b' ')
+        except ValueError as e:
+          self.logMessage("Could not interpret first request lines: ", requestLines)
+
+        if requestLines == "":
+          self.logMessage("Assuming empty sting is HTTP/1.1 GET of /.")
+
+        if version != b"HTTP/1.1":
           self.logMessage("Warning, we don't speak %s", version)
+          return
 
         # TODO: methods = ["GET", "POST", "PUT", "DELETE"]
-        methods = ["GET", "POST"]
+        methods = [b"GET", b"POST", b"PUT"]
         if not method in methods:
           self.logMessage("Warning, we only handle %s" % methods)
           return
 
-        contentType = 'text/plain'
-        responseBody = 'No body'
-        if not(os.path.dirname(uri).endswith('slicer')):
-          contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
+        contentType = b'text/plain'
+        responseBody = b'No body'
+        parsedURL = urlparse.urlparse( uri )
+        pathParts = os.path.split(parsedURL.path) # path is like /slicer/timeimage
+        request = parsedURL.path
+        if parsedURL.query != b"":
+          request += b'?' + parsedURL.query
+        self.logMessage('Parsing url request: ', parsedURL)
+        self.logMessage(' request is: %s' % request)
+        route = pathParts[0]
+        if route.startswith(b'/slicer'):
+          request = request[len(b'/slicer'):]
+          self.logMessage(' request is: %s' % request)
+          contentType, responseBody = self.slicerRequestHandler.handleSlicerRequest(request, requestBody)
+        elif parsedURL.path.startswith(b'/dicom'):
+          self.logMessage(' dicom request is: %s' % request)
+          contentType, responseBody = self.dicomRequestHandler.handleDICOMRequest(parsedURL, requestBody)
         else:
-          url = urlparse.urlparse( uri )
-          action = os.path.basename( url.path )
-          request = '/' + action + '?' + url.query
-          self.logMessage('Parsing url: %s' % request)
-          contentType, responseBody = self.slicerRequestHandler.handleSlicerCommand(request, requestBody)
+          contentType, responseBody = self.staticRequestHandler.handleStaticRequest(uri, requestBody)
 
         if responseBody:
-          self.response = "HTTP/1.1 200 OK\r\n"
-          self.response += "Access-Control-Allow-Origin: *\r\n"
-          self.response += "Content-Type: %s\r\n" % contentType
-          self.response += "Content-Length: %d\r\n" % len(responseBody)
-          self.response += "Cache-Control: no-cache\r\n"
-          self.response += "\r\n"
+          self.response = b"HTTP/1.1 200 OK\r\n"
+          self.response += b"Access-Control-Allow-Origin: *\r\n"
+          self.response += b"Content-Type: %s\r\n" % contentType
+          self.response += b"Content-Length: %d\r\n" % len(responseBody)
+          self.response += b"Cache-Control: no-cache\r\n"
+          self.response += b"\r\n"
           self.response += responseBody
         else:
-          self.response = "HTTP/1.1 404 Not Found\r\n"
-          self.response += "\r\n"
+          self.response = b"HTTP/1.1 404 Not Found\r\n"
+          self.response += b"\r\n"
 
         self.toSend = len(self.response)
         self.sentSoFar = 0
@@ -1708,8 +1449,8 @@ class SlicerHTTPServer(HTTPServer):
         sent = self.connectionSocket.send(self.response)
         self.response = self.response[sent:]
         self.sentSoFar += sent
-        self.logMessage('sent: %d of %d' % (sent, self.toSend))
-      except socket.error, e:
+        self.logMessage('sent: %d (%d of %d, %f%%)' % (sent, self.sentSoFar, self.toSend, 100.*self.sentSoFar / self.toSend))
+      except socket.error as e:
         self.logMessage('Socket error while sending: %s' % e)
         sendError = True
 
@@ -1727,7 +1468,7 @@ class SlicerHTTPServer(HTTPServer):
         fileno = connectionSocket.fileno()
         self.requestCommunicators[fileno] = self.RequestCommunicator(connectionSocket, self.docroot, self.logMessage)
         self.logMessage('Connected on %s fileno %d' % (connectionSocket, connectionSocket.fileno()))
-      except socket.error, e:
+      except socket.error as e:
         self.logMessage('Socket Error', socket.error, e)
 
   def start(self):
@@ -1780,7 +1521,7 @@ class SlicerHTTPServer(HTTPServer):
         s = socket.socket( socket.AF_INET, socket.SOCK_STREAM )
         s.setsockopt( socket.SOL_SOCKET, socket.SO_REUSEADDR, 1 )
         s.bind( ( "", port ) )
-      except socket.error, e:
+      except socket.error as e:
         portFree = False
         port += 1
       finally:
@@ -1805,8 +1546,101 @@ class WebServerLogic:
     self.server = None
     self.logFile = '/tmp/WebServerLogic.log'
 
-    moduleDirectory = os.path.dirname(slicer.modules.webserver.path)
-    self.docroot = moduleDirectory + "/docroot"
+    moduleDirectory = os.path.dirname(slicer.modules.webserver.path.encode())
+    self.docroot = moduleDirectory + b"/docroot"
+
+  def getSceneBounds(self):
+    # scene bounds
+    sceneBounds = None
+    for node in slicer.util.getNodes('*').values():
+      if node.IsA('vtkMRMLDisplayableNode'):
+        bounds = [0,]*6
+        if sceneBounds is None:
+          sceneBounds = bounds
+        node.GetRASBounds(bounds)
+        for element in range(0,6):
+          op = (min,max)[element % 2]
+          sceneBounds[element] = op(sceneBounds[element], bounds[element])
+    return sceneBounds
+
+  def exportScene(self, exportDirectory):
+    """Export a simple scene that can run independent of Slicer.
+
+    This exports the data in a standard format with the idea that other
+    sites can be built externally to make the data more usable."""
+
+    scale = 15
+    sceneBounds = self.getSceneBounds()
+    center = [ 0.5 * (sceneBounds[0]+sceneBounds[1]), 0.5 * (sceneBounds[2]+sceneBounds[3]),  0.5 * (sceneBounds[4]+sceneBounds[5]) ]
+    target = [scale * center[0] / 1000., scale * center[1] / 1000., scale * center[2] / 1000.]
+
+    cameraPosition = [target[1], target[2], target[0] + 2]
+
+    html = """<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="https://aframe.io/releases/0.6.1/aframe.min.js"></script>
+    <script src="https://cdn.rawgit.com/tizzle/aframe-orbit-controls-component/v0.1.12/dist/aframe-orbit-controls-component.min.js"></script>
+    <style type="text/css">
+      * {font-family: sans-serif;}
+    </style>
+  </head>
+  <body>
+
+    <a-scene >
+      <a-entity
+          id="camera"
+          camera="fov: 80; zoom: 1;"
+          position="%CAMERA_POSITION%"
+          orbit-controls="
+              autoRotate: false;
+              target: #target;
+              enableDamping: true;
+              dampingFactor: 0.125;
+              rotateSpeed:0.25;
+              minDistance:1;
+              maxDistance:100;
+              "
+          >
+      </a-entity>
+
+      <a-entity id="target" position="%TARGET_POSITION%"></a-entity>
+      <a-entity id="mrml" position="0 0 0" scale="%SCALE%" rotation="-90 180 0">
+        <a-gltf-model src="./mrml.gltf"></a-gltf-model>
+      </a-entity>
+    </a-scene>
+
+  </body>
+</html>
+"""
+    html = html.replace("%CAMERA_POSITION%", "%g %g %g" % (cameraPosition[0], cameraPosition[1], cameraPosition[2]))
+    html = html.replace("%SCALE%", "%g %g %g" % (scale, scale, scale))
+    html = html.replace("%TARGET_POSITION%", "%g %g %g" % (target[1], target[2], target[0]))
+
+    htmlPath = os.path.join(exportDirectory, "index.html")
+    print('saving to', htmlPath)
+    fp = open(htmlPath, "w")
+    fp.write(html)
+    fp.close()
+
+    exporter = glTFLib.glTFExporter(slicer.mrmlScene)
+    glTF = exporter.export(options={
+      "fiberMode": "tubes",
+    })
+    glTFPath = os.path.join(exportDirectory, "mrml.gltf")
+    print('saving to', glTFPath)
+    fp = open(glTFPath, "w")
+    fp.write(glTF)
+    fp.close()
+
+    for bufferFileName in exporter.buffers.keys():
+      print('saving to', bufferFileName)
+      fp = open(os.path.join(exportDirectory, bufferFileName), "wb")
+      fp.write(exporter.buffers[bufferFileName].data)
+      fp.close()
+
+    print('done exporting')
 
 
   def logMessage(self,*args):

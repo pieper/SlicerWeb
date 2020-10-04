@@ -23,6 +23,7 @@ endif()
 #-----------------------------------------------------------------------------
 set(KIT_PYTHON_SCRIPTS
   WebServer.py
+  glTFLib/glTF.py
   )
 
 set(KIT_PYTHON_RESOURCES

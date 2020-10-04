@@ -212,6 +212,10 @@
 
             // populate the tree
             var populateTree = function(parentID, sequence, tag) {
+              if ( tag === "0040A375" ) {
+                console.log("skipping CurrentRequestedProcedureEvidenceSequence");
+                return;
+              }
               var id = parentID + "_" + tag;
               var formattedTag = "("+tag.substr(0,4) + ',' + tag.substr(4,4) + ")";
               var entry = dicomMetadictionary.byTag[formattedTag];

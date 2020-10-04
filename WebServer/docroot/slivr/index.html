@@ -5,7 +5,7 @@
     <!--<script src="https://aframe.io/releases/0.5.0/aframe.min.js"></script>-->
     <script src="slivr/components/aframe-master.js"></script>
     <script src="slivr/components/aabb-collider.js"></script>
-    <script src="slivr/components/controller-cursor.js"></script>
+    <!-- <script src="slivr/components/controller-cursor.js"></script> -->
     <script src="slivr/components/grab.js"></script>
     <script src="slivr/components/ground.js"></script>
     <script src="slivr/components/layout.js"></script>
@@ -15,7 +15,8 @@
   </head>
   <body>
 
-    <a-scene stats>
+
+    <a-scene>
 
       <a-entity camera="userHeight: 1.6" look-controls wasd-controls></a-entity>
 
@@ -41,7 +42,6 @@
         <a-entity position="0 1.0 0" scale="3 3 3" rotation="-90 0 0">
           <a-gltf-model id='mrml' src='slicer/mrml'></a-gltf-model>
           <a-gltf-model id='tracts'></a-gltf-model>
-          <a-gltf-model id='tractsForLoading' visible=true></a-gltf-model>
         </a-entity>
       </a-box>
 
@@ -52,12 +52,13 @@
         src='slicer/slice?view=red'
         position="0 .5 -.3"
         class='grabbable'
+        text='value: "No pending requests..."'
       ></a-image>
 
       <!-- Controllers
       -->
-      <a-entity hand-controls="left" aabb-collider="objects: .grabbable;" grab controller-cursor></a-entity>
-      <a-entity hand-controls="right" aabb-collider="objects: .grabbable;" grab controller-cursor></a-entity>
+      <a-entity id='left-hand' hand-controls="left" aabb-collider="objects: .grabbable;" grab controller-cursor></a-entity>
+      <a-entity id='right-hand' hand-controls="right" aabb-collider="objects: .grabbable;" grab controller-cursor></a-entity>
       <!--
       <a-entity vive-controls="hand: left" aabb-collider="objects: .grabbable;" grab></a-entity>
       <a-entity vive-controls="hand: right" aabb-collider="objects: .grabbable;" grab></a-entity>
@@ -70,25 +71,30 @@
         <a-image id='threeDView0' src='slicer/threeD' class='grabbable'></a-image>
       </a-entity>
 
-
     </a-scene>
+
+    <canvas id="renderCanvas"></canvas>
 
   </body>
 
   <script>
 
-  let updateEvent = 'released'; /* when tracts update; options are 'released' or 'moved' */
+  let updateEvent = 'moved'; /* when tracts update; options are 'released' or 'moved' */
 
-  let mrml, probe, tracts, tractsForLoading;
-
+  let mrml, probe, tracts;
+  let lastRequest = Date.now();
+  let pendingRequests = 0;
+  let seeds = [];
   let tractographyRequest = undefined;
 
-  function updateProbe(event) {
-    let fiberNodeID = 'vtkMRMLFiberBundleNode1';
-    if (tractographyRequest != undefined) {
+  function growSeed() {
+    let seed = seeds.shift();
+    if (!seed || tractographyRequest != undefined) {
       return;
     }
-    let position = event.target.getAttribute("position");
+    console.log(seed);
+    let position = seed.getAttribute("position");
+    AFRAME.scenes[0].removeChild(seed);
     let worldPosition = new THREE.Vector4(position.x, position.y, position.z, 1);
     let worldToMRML = new THREE.Matrix4()
     worldToMRML.getInverse(mrml.object3D.matrixWorld);
@@ -100,36 +106,61 @@
     tractographyRequest.open('GET', request);
     tractographyRequest.onreadystatechange = function() {
       if (tractographyRequest.readyState == 4) {
-        tractsForLoading.setAttribute('src', `slicer/mrml?id=${fiberNodeID}&${Date.now()}`);
+        let newTracts = document.createElement('a-gltf-model');
+        newTracts.setAttribute('src', `slicer/mrml?id=${fiberNodeID}&${Date.now()}`);
+        newTracts.addEventListener('model-loaded', event => {
+          pendingRequests += -1;
+          billboard.setAttribute('text', `value: "${pendingRequests} pendingRequests"`);
+          tractographyRequest = undefined;
+          growSeed();
+        });
+        tracts.appendChild(newTracts);
       }
     };
     tractographyRequest.send();
   }
 
+  function updateProbe(event) {
+    if (Date.now() - lastRequest < 30 || pendingRequests > 1000) {
+      return;
+    }
+    lastRequest = Date.now();
+    pendingRequests += 1;
+    billboard.setAttribute('text', `value: "${pendingRequests} pendingRequests"`);
+    let fiberNodeID = 'vtkMRMLFiberBundleNode1';
+    let position = event.target.getAttribute("position");
+    console.log('event target', event.target);
+
+    let seed = document.createElement('a-sphere');
+    seed.setAttribute('position', position);
+    seed.setAttribute('radius', 0.005);
+    seed.setAttribute('color', "#00aa44");
+    AFRAME.scenes[0].appendChild(seed);
+    seeds.push(seed);
+    growSeed();
+  }
+
   document.addEventListener("DOMContentLoaded", event => {
 
     mrml = document.querySelector('#mrml');
-
     tracts = document.querySelector('#tracts');
-    tractsForLoading = document.querySelector('#tractsForLoading');
-    tractsForLoading.addEventListener('model-loaded', event => {
-      tractographyRequest = undefined;
-      tracts.setAttribute('src', tractsForLoading.getAttribute('src'));
-    });
 
     probe = document.querySelector('#probe');
     probe.addEventListener(updateEvent, updateProbe);
-
 
     let billboard = document.querySelector('#billboard');
     billboard.setAttribute('look-at', "[camera]");
 
     billboard.addEventListener('mousedown', event => {
       billboard.setAttribute('src', `slicer/slice?view=red&scrollTo=${Math.random()}`);
+      console.log(billboard);
+    });
+
+    billboard.addEventListener('mouseenter', event => {
+      console.log(event);
     });
 
   });
-
 
   </script>
 </html>
