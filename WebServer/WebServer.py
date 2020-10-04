@@ -547,7 +547,7 @@ class SlicerRequestHandler(object):
       tumor2Display.SetLevel(tumor1Display.GetLevel())
       applicationLogic = slicer.app.applicationLogic()
       applicationLogic.FitSliceToAll()
-      return ( json.dumps([tumor1.GetName(), tumor2.GetName()]) )
+      return ( json.dumps([tumor1.GetName(), tumor2.GetName()]).encode() )
     if id == 'amigo-2012-07-02':
       #
       # first, get the data
@@ -569,7 +569,7 @@ class SlicerRequestHandler(object):
       redComposite.SetBackgroundVolumeID( tumor1.GetID() )
       yellowComposite.SetBackgroundVolumeID( tumor2.GetID() )
       applicationLogic.FitSliceToAll()
-      return ( json.dumps([tumor1.GetName(), tumor2.GetName()]) )
+      return ( json.dumps([tumor1.GetName(), tumor2.GetName()]).encode() )
     elif id == 'default':
       #
       # first, get the sample data
@@ -578,7 +578,7 @@ class SlicerRequestHandler(object):
         import SampleData
         sampleDataLogic = SampleData.SampleDataLogic()
         head = sampleDataLogic.downloadMRHead()
-        return ( json.dumps([head.GetName(),]) )
+        return ( json.dumps([head.GetName(),]).encode() )
 
     return ( "no matching preset" )
 
@@ -950,7 +950,7 @@ space origin: %%origin%%
           'position': position
         })
       fiducials[markupsNode.GetID()] = node
-    return ( json.dumps( fiducials ) )
+    return ( json.dumps( fiducials ).encode() )
 
   def fiducial(self, request, requestBody):
     p = urlparse.urlparse(request.decode())
@@ -1012,7 +1012,7 @@ space origin: %%origin%%
       self.registerOneTimeBuffers(exporter.buffers)
       return glTF.encode()
     else:
-      return ( json.dumps( slicer.util.getNodes('*').keys() ) )
+      return ( json.dumps( slicer.util.getNodes('*').keys() ).encode() )
 
   def slice(self,request):
     """return a png for a slice view.
