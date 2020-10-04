@@ -189,31 +189,6 @@ class WebServerWidget(ScriptedLoadableModuleWidget):
     self.qiicrWebWidget.url = url
     self.qiicrWebWidget.show()
 
-    page = self.qiicrWebWidget.page()
-    if not page.connect('statusBarMessage(QString)', self.qiicrChartMessage):
-      logging.error('statusBarMessage connect failed')
-
-  def qiicrChartMessage(self,message):
-    if message == "":
-      return
-    import json
-    doc = json.loads(message)
-    instanceUID = doc['instanceUID']
-
-    print('want to load', instanceUID)
-    # instanceUID = '1.2.276.0.7230010.3.1.4.8323329.10006.1436811198.81030'
-    print('instead loading', instanceUID)
-
-    seriesUID = slicer.dicomDatabase.instanceValue(instanceUID,'0020,000E')
-    print('actually offering', seriesUID)
-
-
-    from DICOMLib import DICOMDetailsPopup
-    self.detailsPopup = DICOMDetailsPopup()
-    self.detailsPopup.offerLoadables(seriesUID, 'Series')
-    self.detailsPopup.examineForLoading()
-    self.detailsPopup.loadCheckedLoadables()
-
   def exportScene(self):
     exportDirectory = ctk.ctkFileDialog.getExistingDirectory()
     if exportDirectory.endswith('/untitled'):
