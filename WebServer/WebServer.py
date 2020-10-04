@@ -1012,7 +1012,7 @@ class SlicerRequestHandler(object):
     volumeNode = slicer.util.getNode(volumeID)
     volumeArray = slicer.util.array(volumeID)
 
-    if volumeNode == None or volumeArray == None:
+    if volumeNode is None or volumeArray is None:
       self.logMessage('Could not find requested volume')
       return None
     supportedNodes = ["vtkMRMLScalarVolumeNode","vtkMRMLLabelMapVolumeNode"]
@@ -1022,8 +1022,10 @@ class SlicerRequestHandler(object):
 
     imageData = volumeNode.GetImageData()
 
-    if imageData.GetScalarTypeAsString() != "short":
-      self.logMessage('Can only get volumes of type short')
+    supportedScalarTypes = ["short", "double"]
+    scalarType = imageData.GetScalarTypeAsString()
+    if scalarType not in supportedScalarTypes:
+      self.logMessage('Can only get volumes of types %s, not %s' % (str(supportedScalarTypes), scalarType))
       return None
 
     sizes = imageData.GetDimensions()
@@ -1056,7 +1058,7 @@ class SlicerRequestHandler(object):
     nrrdHeader = """NRRD0004
 # Complete NRRD file format specification at:
 # http://teem.sourceforge.net/nrrd/format.html
-type: short
+type: %%scalarType%%
 dimension: 3
 space: left-posterior-superior
 sizes: %%sizes%%
@@ -1066,7 +1068,7 @@ endian: little
 encoding: raw
 space origin: %%origin%%
 
-""".replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
+""".replace("%%scalarType%%", scalarType).replace("%%sizes%%", sizes).replace("%%directions%%", directions).replace("%%origin%%", origin)
 
 
     nrrdData = StringIO.StringIO()
