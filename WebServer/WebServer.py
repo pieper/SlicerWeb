@@ -1312,6 +1312,10 @@ class SlicerHTTPServer(HTTPServer):
       self.readNotifier.connect('activated(int)', self.onReadable)
       self.logMessage('Waiting on %d...' % fileno)
 
+    def onReadableComplete(self):
+      self.logMessage("reading complete, freeing notifier")
+      self.readNotifier = None
+
     def onReadable(self, fileno):
       self.logMessage('Reading...')
       requestHeader = b""
@@ -1352,7 +1356,8 @@ class SlicerHTTPServer(HTTPServer):
       if len(requestPart) == 0 or requestComplete:
         self.logMessage('Got complete message of header size %d, body size %d' % (len(requestHeader), len(requestBody)))
         self.readNotifier.disconnect('activated(int)', self.onReadable)
-        del self.readNotifier
+        self.readNotifier.setEnabled(False)
+        qt.QTimer.singleShot(0, self.onReadableComplete)
 
         if len(self.requestSoFar) == 0:
           self.logMessage("Ignoring empty request")
@@ -1417,8 +1422,13 @@ class SlicerHTTPServer(HTTPServer):
         self.writeNotifier = qt.QSocketNotifier(fileno, qt.QSocketNotifier.Write)
         self.writeNotifier.connect('activated(int)', self.onWritable)
 
+    def onWriteableComplete(self):
+        self.logMessage("writing complete, freeing notifier")
+        self.writeNotifier = None
+        self.connectionSocket = None
+
     def onWritable(self, fileno):
-      self.logMessage('Sending...')
+      self.logMessage('Sending on %d...' % (fileno))
       sendError = False
       try:
         sent = self.connectionSocket.send(self.response)
@@ -1431,10 +1441,10 @@ class SlicerHTTPServer(HTTPServer):
 
       if self.sentSoFar >= self.toSend or sendError:
         self.writeNotifier.disconnect('activated(int)', self.onWritable)
-        del self.writeNotifier
+        self.writeNotifier.setEnabled(False)
+        qt.QTimer.singleShot(0, self.onWriteableComplete)
         self.connectionSocket.close()
-        del self.connectionSocket
-        self.logMessage('closed')
+        self.logMessage('closed fileno %d' % (fileno))
 
   def onServerSocketNotify(self,fileno):
       self.logMessage('got request on %d' % fileno)
