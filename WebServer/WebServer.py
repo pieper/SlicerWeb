@@ -825,6 +825,7 @@ class SlicerRequestHandler(object):
       self.logMessage('Can only get volumes of types %s, not %s' % (str(supportedScalarTypes), scalarType))
       self.logMessage('Converting to short, but may cause data loss.')
       volumeArray = numpy.array(volumeArray, dtype='int16')
+      scalarType = 'short'
 
     sizes = imageData.GetDimensions()
     sizes = " ".join(list(map(str,sizes)))
