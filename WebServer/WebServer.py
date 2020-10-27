@@ -496,6 +496,9 @@ class SlicerRequestHandler(object):
     return contentType, responseBody
 
   def repl(self,request, requestBody):
+    """example:
+curl -X POST localhost:2016/slicer/repl --data "slicer.app.layoutManager().setLayout(slicer.vtkMRMLLayoutNode.SlicerLayoutOneUpRedSliceView)"
+    """
     self.logMessage('repl with body %s' % requestBody)
     p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
@@ -508,8 +511,9 @@ class SlicerRequestHandler(object):
         self.logMessage('need to supply source code to run')
         return ""
     self.logMessage('will run %s' % source)
-    code = compile(source, '<slicr-repl>', 'exec')
-    result = eval(code, globals())
+    exec("__replResult = {}", globals())
+    exec(source, globals())
+    result = json.dumps(eval("__replResult", globals())).encode()
     self.logMessage('result: %s' % result)
     return result
 
