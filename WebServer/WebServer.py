@@ -1,13 +1,24 @@
-import os
+# slicer imports
 from __main__ import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
-import pydicom
+# python imports
+try:
+    from BaseHTTPServer import HTTPServer
+except ImportError:
+    from http.server import HTTPServer
+import json
 import logging
+import mimetypes
+import numpy
+import os
+import pydicom
 import random
-import sys
 import select
-
+import sys
+import socket
+import string
+import time
 try:
     import urlparse
 except ImportError:
@@ -15,23 +26,12 @@ except ImportError:
     class urlparse(object):
         urlparse = urllib.parse.urlparse
         parse_qs = urllib.parse.parse_qs
-import json
-
-import string
-import time
-import socket
 import uuid
 
-try:
-    from BaseHTTPServer import HTTPServer
-except ImportError:
-    from http.server import HTTPServer
-
-import mimetypes
-
-import numpy
+# vtk imports
 import vtk.util.numpy_support
 
+# WebServer imports
 import glTFLib
 import jsonmodel
 
