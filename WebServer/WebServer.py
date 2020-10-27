@@ -478,6 +478,9 @@ class SlicerRequestHandler(object):
       elif request.find(b'/fiducial') == 0:
         responseBody = self.fiducial(request, requestBody)
         contentType = b'application/json',
+      elif request.find(b'/accessStudy') == 0:
+        responseBody = self.accessStudy(request, requestBody)
+        contentType = b'application/json',
       else:
         responseBody = b"unknown command \"" + request + b"\""
     except:
@@ -980,6 +983,26 @@ space origin: %%origin%%
     fiducialNode = slicer.util.getNode(fiducialID)
     fiducialNode.SetNthFiducialPosition(index, float(r), float(a), float(s));
     return "{'result': 'ok'}"
+
+  def accessStudy(self, request, requestBody):
+    p = urlparse.urlparse(request.decode())
+    q = urlparse.parse_qs(p.query)
+
+    request = json.loads(requestBody)
+
+    dicomWebEndpoint = request['dicomWEBPrefix'] + '/' + request['dicomWEBStore']
+    print(f"Loading from {dicomWebEndpoint}")
+
+    from DICOMLib import DICOMUtils
+    loadedUIDs = DICOMUtils.importFromDICOMWeb(
+        dicomWebEndpoint = request['dicomWEBPrefix'] + '/' + request['dicomWEBStore'],
+        studyInstanceUID = request['studyUID'],
+        accessToken = request['accessToken'])
+
+    print(f"Loaded {loadedUIDs}")
+
+    return b'{"result": "ok"}'
+
 
   def mrml(self,request):
     p = urlparse.urlparse(request.decode())
@@ -1650,3 +1673,4 @@ class WebServerLogic:
   def stop(self):
     if self.server:
       self.server.stop()
+
