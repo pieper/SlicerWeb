@@ -1303,6 +1303,7 @@ class SlicerHTTPServer(HTTPServer):
       self.connectionSocket = connectionSocket
       self.docroot = docroot
       self.logMessage = logMessage
+      self.bufferSize = 1024*1024
       self.slicerRequestHandler = SlicerRequestHandler(logMessage)
       self.dicomRequestHandler = DICOMRequestHandler(logMessage)
       self.staticRequestHandler = StaticRequestHandler(self.docroot, logMessage)
@@ -1324,7 +1325,7 @@ class SlicerHTTPServer(HTTPServer):
       requestComplete = False
       requestPart = ""
       try:
-        requestPart = self.connectionSocket.recv(1024*1024)
+        requestPart = self.connectionSocket.recv(self.bufferSize)
         self.logMessage('Just received... %d bytes in this part' % len(requestPart))
         self.requestSoFar += requestPart
         endOfHeader = self.requestSoFar.find(b'\r\n\r\n')
@@ -1345,6 +1346,10 @@ class SlicerHTTPServer(HTTPServer):
               contentLength = int(tag[numberStartIndex:numberEndIndex])
               self.expectedRequestSize = 4 + endOfHeader + contentLength
               self.logMessage('Expecting a body of %d, total size %d' % (contentLength, self.expectedRequestSize))
+              if len(requestPart) == self.expectedRequestSize:
+                requestHeader = requestPart[:endOfHeader+2]
+                requestBody = requestPart[4+endOfHeader:]
+                requestComplete = True
             else:
               self.logMessage('Found end of header with no content, so body is empty')
               requestHeader = self.requestSoFar[:-2]
