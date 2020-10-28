@@ -1477,7 +1477,7 @@ class SlicerHTTPServer(HTTPServer):
       self.logMessage('Sending on %d...' % (fileno))
       sendError = False
       try:
-        sent = self.connectionSocket.send(self.response)
+        sent = self.connectionSocket.send(self.response[:500*self.bufferSize])
         self.response = self.response[sent:]
         self.sentSoFar += sent
         self.logMessage('sent: %d (%d of %d, %f%%)' % (sent, self.sentSoFar, self.toSend, 100.*self.sentSoFar / self.toSend))
