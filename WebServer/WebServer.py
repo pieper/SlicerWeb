@@ -1332,10 +1332,17 @@ class SlicerHTTPServer(HTTPServer):
   """
   # TODO: set header so client knows that image refreshes are needed (avoid
   # using the &time=xxx trick)
-  def __init__(self, server_address=("",8070), RequestHandlerClass=SlicerRequestHandler, docroot='.', logFile=None,logMessage=None):
+  def __init__(self, server_address=("",8070), RequestHandlerClass=SlicerRequestHandler, docroot='.', logFile=None,logMessage=None, certfile=None):
     HTTPServer.__init__(self,server_address, RequestHandlerClass)
     self.docroot = docroot
     self.timeout = 1.
+    if certfile:
+      # https://stackoverflow.com/questions/19705785/python-3-simple-https-server
+      import ssl
+      self.socket = ssl.wrap_socket(self.socket,
+                                 server_side=True,
+                                 certfile=certfile,
+                                 ssl_version=ssl.PROTOCOL_TLS)
     self.socket.settimeout(5.)
     self.logFile = logFile
     if logMessage:
@@ -1692,7 +1699,9 @@ class WebServerLogic:
     self.port = SlicerHTTPServer.findFreePort(self.port)
     self.logMessage("Starting server on port %d" % self.port)
     self.logMessage('docroot: %s' % self.docroot)
-    self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage)
+    # for testing webxr
+    certfile = '/Users/pieper/slicer/latest/SlicerWeb/localhost.pem'
+    self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage, certfile=certfile)
     self.server.start()
 
   def stop(self):
