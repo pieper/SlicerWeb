@@ -33,7 +33,7 @@ import vtk.util.numpy_support
 
 # WebServer imports
 import glTFLib
-import jsonmodel
+import dicomserver
 
 #
 # WebServer
