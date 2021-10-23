@@ -1016,7 +1016,15 @@ space origin: %%origin%%
         studyInstanceUID = request['studyUID'],
         accessToken = request['accessToken'])
 
-    print(f"Loaded {loadedUIDs}")
+    files = []
+    for studyUID in loadedUIDs:
+        for seriesUID in slicer.dicomDatabase.seriesForStudy(studyUID):
+            for instance in slicer.dicomDatabase.instancesForSeries(seriesUID):
+                files.append(slicer.dicomDatabase.fileForInstance(instance))
+    loadables = DICOMUtils.getLoadablesFromFileLists([files])
+    loadedNodes = DICOMUtils.loadLoadables(loadLoadables)
+
+    print(f"Loaded {loadedUIDs}, and {loadedNodes}")
 
     return b'{"result": "ok"}'
 
