@@ -41,3 +41,6 @@ pip-log.txt
 
 # Exclude Kdevelop4 files ...
 .kdev*
+
+# SSL Keys
+*.pem
