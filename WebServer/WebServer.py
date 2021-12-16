@@ -15,7 +15,7 @@ import os
 import pydicom
 import random
 import select
-import sys
+import sys/
 import socket
 import string
 import time
@@ -1700,7 +1700,8 @@ class WebServerLogic:
     self.logMessage("Starting server on port %d" % self.port)
     self.logMessage('docroot: %s' % self.docroot)
     # for testing webxr
-    certfile = '/Users/pieper/slicer/latest/SlicerWeb/localhost.pem'
+    # e.g. certfile = '/Users/pieper/slicer/latest/SlicerWeb/localhost.pem'
+    certfile = None
     self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage, certfile=certfile)
     self.server.start()
 
