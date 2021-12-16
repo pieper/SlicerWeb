@@ -15,7 +15,7 @@ import os
 import pydicom
 import random
 import select
-import sys/
+import sys
 import socket
 import string
 import time
