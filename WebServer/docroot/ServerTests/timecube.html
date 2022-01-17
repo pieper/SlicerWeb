@@ -4,8 +4,8 @@
 <title>Slicer WebGL Time Cube</title> 
 <meta http-equiv="content-type" content="text/html; charset=ISO-8859-1"> 
  
-<script type="text/javascript" src="glMatrix-0.9.5.min.js"></script> 
-<script type="text/javascript" src="webgl-utils.js"></script> 
+<script type="text/javascript" src="./glMatrix-0.9.5.min.js"></script> 
+<script type="text/javascript" src="./webgl-utils.js"></script> 
  
 <script id="shader-fs" type="x-shader/x-fragment"> 
     //
@@ -147,7 +147,7 @@
         g = Math.round(Math.random()*255).toString(16);
         b = Math.round(Math.random()*255).toString(16);
         color = r+g+b;
-        im.src = "/slicer/timeimage" + "?color=" + color
+        im.src = "../slicer/timeimage" + "?color=" + color
         neheTexture.image.src = im.src;
     }
  
@@ -161,15 +161,8 @@
             handleLoadedTexture(neheTexture)
         }
  
-        //neheTexture.image.src = "download.jpg";
-        //neheTexture.image.src = "http://gagadaily.com/wp-content/uploads/2010/11/gagapca.jpg";
-        //neheTexture.image.src = "nehe.png";
-        //neheTexture.image.src = "http://boggs.bwh.harvard.edu/timeimage" + "?" + (new Date()).getTime();
-
         var im = document.getElementById("flatimage");
-        //im.src = "http://boggs.bwh.harvard.edu/timeimage" + "?" + (new Date()).getTime();
-        //im.src = "http://192.168.0.108:8070/slicer/red" + "/" + (new Date()).getTime();
-        im.src = "/slicer/timeimage"
+        im.src = "../slicer/timeimage"
         neheTexture.image.src = im.src;
     }
  
