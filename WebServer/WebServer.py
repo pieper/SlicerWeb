@@ -639,26 +639,56 @@ curl -X POST localhost:2016/slicer/repl --data "slicer.app.layoutManager().setLa
     transform.RotateY(gamma)
     self.tracker.SetMatrixTransformToParent(transform.GetMatrix())
 
-    return ( "got it" )
+    return ( b"got it" )
 
   def tracking(self,request):
     p = urlparse.urlparse(request.decode())
     q = urlparse.parse_qs(p.query)
     self.logMessage (q)
-    transformMatrix = list(map(float,q['m'][0].split(',')))
+    try:
+      transformMatrix = list(map(float,q['m'][0].split(',')))
+    except KeyError:
+      transformMatrix = None
+    try:
+      quaternion = list(map(float,q['q'][0].split(',')))
+    except KeyError:
+      quaternion = None
+    try:
+      position = list(map(float,q['p'][0].split(',')))
+    except KeyError:
+      position = None
 
     self.setupMRMLTracking()
-    m = self.tracker.GetMatrixTransformToParent()
-    m.Identity()
-    for row in range(3):
-      for column in range(3):
-        m.SetElement(row,column, transformMatrix[3*row+column])
-        m.SetElement(row,column, transformMatrix[3*row+column])
-        m.SetElement(row,column, transformMatrix[3*row+column])
-        #m.SetElement(row,column, transformMatrix[3*row+column])
+    m = vtk.vtkMatrix4x4()
+    self.tracker.GetMatrixTransformToParent(m)
+
+    if transformMatrix:
+      for row in range(3):
+        for column in range(3):
+          m.SetElement(row,column, transformMatrix[3*row+column])
+          m.SetElement(row,column, transformMatrix[3*row+column])
+          m.SetElement(row,column, transformMatrix[3*row+column])
+          #m.SetElement(row,column, transformMatrix[3*row+column])
+
+    if position:
+      for row in range(3):
+        m.SetElement(row,3, position[row])
+
+    if quaternion:
+      qu = vtk.vtkQuaternion['float64']()
+      qu.SetW(quaternion[0])
+      qu.SetX(quaternion[1])
+      qu.SetY(quaternion[2])
+      qu.SetZ(quaternion[3])
+      m3 = [[0,0,0],[0,0,0],[0,0,0]]
+      qu.ToMatrix3x3(m3)
+      for row in range(3):
+        for column in range(3):
+          m.SetElement(row,column, m3[row][column])
+
     self.tracker.SetMatrixTransformToParent(m)
 
-    return ( "got it" )
+    return ( b"got it" )
 
   def volumeSelection(self,request):
     p = urlparse.urlparse(request.decode())
@@ -694,7 +724,7 @@ curl -X POST localhost:2016/slicer/repl --data "slicer.app.layoutManager().setLa
     volumeNode = nodes[nodes.keys()[newIndex]]
     selectionNode.SetReferenceActiveVolumeID( volumeNode.GetID() )
     applicationLogic.PropagateVolumeSelection(0)
-    return ( "got it" )
+    return ( b"got it" )
 
   def volumes(self, request, requestBody):
     volumes = []
@@ -1701,6 +1731,7 @@ class WebServerLogic:
     self.logMessage('docroot: %s' % self.docroot)
     # for testing webxr
     # e.g. certfile = '/Users/pieper/slicer/latest/SlicerWeb/localhost.pem'
+    # openssl req -new -x509 -keyout localhost.pem -out localhost.pem -days 365 -nodes
     certfile = None
     self.server = SlicerHTTPServer(docroot=self.docroot,server_address=("",self.port),logFile=self.logFile,logMessage=self.logMessage, certfile=certfile)
     self.server.start()

@@ -10,7 +10,7 @@
     <meta name='apple-mobile-web-app-capable' content='yes'>
     <link rel='icon' type='image/png' sizes='32x32' href='favicon-32x32.png'>
     <link rel='icon' type='image/png' sizes='96x96' href='favicon-96x96.png'>
-    <link rel='stylesheet' href='css/common.css'>
+    <link rel='stylesheet' href='./stylesheets/application.css'>
 
     <title>Barebones AR</title>
   </head>
@@ -41,6 +41,8 @@
       let xrButton = document.getElementById('xr-button');
       let xrSession = null;
       let xrRefSpace = null;
+      let currentPose = null;
+      let currentURL = "Nothing sent";
 
       // WebGL scene globals.
       let gl = null;
@@ -139,12 +141,69 @@
         let pose = frame.getViewerPose(xrRefSpace);
         if (pose) {
           const p = pose.transform.position;
-          document.getElementById('pose').innerText = "Position: " +
-            p.x.toFixed(3) + ", " + p.y.toFixed(3) + ", " + p.z.toFixed(3);
+          const m = pose.transform.matrix;
+          document.getElementById('pose').innerText = "" +
+            "Position: " + 1000 * p.x.toFixed(3) + ", " + 1000* p.y.toFixed(3) + ", " + 1000 * p.z.toFixed(3) + "\n" +
+            "matrix:\n" + 
+               m[0].toFixed(3) + ", " + m[4].toFixed(3) + ", " + m[8].toFixed(3) + ", " + m[12].toFixed(3) + "\n" +
+               m[1].toFixed(3) + ", " + m[5].toFixed(3) + ", " + m[9].toFixed(3) + ", " + m[13].toFixed(3) + "\n" +
+               m[2].toFixed(3) + ", " + m[6].toFixed(3) + ", " + m[10].toFixed(3) + ", " + m[14].toFixed(3) + "\n" +
+               m[3].toFixed(3) + ", " + m[7].toFixed(3) + ", " + m[11].toFixed(3) + ", " + m[15].toFixed(3) + "\n" + currentURL;
+
+          if (currentPose == null) {
+            currentPose = pose;
+            sendTracker();
+          }
+          currentPose = pose;
+
         } else {
           document.getElementById('pose').innerText = "Position: (null pose)";
         }
       }
+
+    function sendTracker() {
+      let putRequest = new XMLHttpRequest();
+      putRequest.onload = function (event) {
+        if (xrSession != null) {
+          sendTracker(); // trigger another round
+        }
+      };
+      putRequest.onerror = function () {
+        console.log(`Got a ${putRequest.status} with text ${putRequest.statusText}`);
+      };
+      let pose = currentPose;
+      if (pose) {
+          let putURL = "./slicer/tracking";
+          const p = pose.transform.position;
+          const o = pose.transform.orientation;
+          const m = pose.transform.matrix;
+
+          /*
+	  putURL += "?m=";
+          for (let row = 0; row < 4; row++) {
+            for (let column = 0; column < 4; column++) {
+              let value = m[row*4 + column];
+              if (row == column) {
+                value = 1;
+              } else if (column < 3) {
+                value = 0;
+              } else {
+                value = p[row];
+              }
+              putURL += `${value},`;
+            }
+          }
+	  putURL = putURL.slice(0,-1); // strip last comma
+	  */
+
+	  putURL += `?p=${1000*p.x},${1000*p.y},${1000*p.z}`;
+	  putURL += `&q=${o.w},${o.x},${o.y},${o.z}`;
+
+	  putRequest.open("PUT", putURL, true);
+	  putRequest.send();
+	  currentURL = putURL;
+      }
+    }
 
       initXR();
     </script>
