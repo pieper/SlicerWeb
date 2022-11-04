@@ -1,3 +1,5 @@
+*Note* This repository was for development of the WebServer feature for [3D Slicer](https://slicer.org).  The feature has been merged into the [main repository](https://github.com/Slicer/Slicer/tree/main/Modules/Scripted/WebServer) and is being further developed there.
+
 SlicerWeb
 =========
 
